@@ -43,8 +43,10 @@ Health: <http://localhost:3000/api/v1/health/ready>. Stop with `pnpm stack:down`
 
 > MinIO no longer publishes to Docker Hub; compose uses
 > `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. Set `MINIO_IMAGE` in
-> `.env` to use another S3-compatible image. Behind a TLS-intercepting proxy,
-> build with `--secret id=extra_ca,src=/path/to/ca.pem`.
+> `.env` to use another MinIO release. If quay.io is unreachable, run
+> `pnpm stack:up:seaweedfs` instead (SeaweedFS S3 gateway, development only).
+> Behind a TLS-intercepting proxy, build with
+> `--secret id=extra_ca,src=/path/to/ca.pem`.
 
 ## Hot-reload development
 
