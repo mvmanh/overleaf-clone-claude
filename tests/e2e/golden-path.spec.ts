@@ -53,7 +53,7 @@ test('alice sees only her seeded projects with correct roles and opens the edito
   await page.keyboard.press('Alt+3');
   await expect(page.getByTestId('panel-pdf')).toBeFocused();
   await page.keyboard.press('Shift+?');
-  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' })).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Help: shortcuts & snippets' })).toBeVisible();
 });
 
 test('carol cannot open a project she is not a member of', async ({ page }) => {

@@ -18,7 +18,7 @@ test('create, rename, share as viewer, enforce viewer limits, delete', async ({ 
   const projectUrl = alice.url();
 
   // Rename through settings.
-  await alice.getByRole('button', { name: 'Settings' }).click();
+  await alice.getByRole('button', { name: 'Settings', exact: true }).click();
   const settings = alice.getByRole('dialog', { name: 'Project settings' });
   await settings.getByLabel('Project name', { exact: true }).fill(renamed);
   await settings.getByRole('button', { name: 'Save changes' }).click();
@@ -46,7 +46,7 @@ test('create, rename, share as viewer, enforce viewer limits, delete', async ({ 
   const bobRow = bob.getByTestId('project-row').filter({ hasText: renamed });
   await expect(bobRow).toContainText('viewer');
   await bobRow.click();
-  await bob.getByRole('button', { name: 'Settings' }).click();
+  await bob.getByRole('button', { name: 'Settings', exact: true }).click();
   const bobSettings = bob.getByRole('dialog', { name: 'Project settings' });
   await expect(bobSettings.getByLabel('Project name', { exact: true })).toBeDisabled();
   await expect(bobSettings.getByRole('button', { name: 'Delete project' })).toHaveCount(0);
@@ -56,7 +56,7 @@ test('create, rename, share as viewer, enforce viewer limits, delete', async ({ 
   await bob.keyboard.press('Escape');
 
   // Alice deletes it (name confirmation required).
-  await alice.getByRole('button', { name: 'Settings' }).click();
+  await alice.getByRole('button', { name: 'Settings', exact: true }).click();
   const danger = alice.getByRole('dialog', { name: 'Project settings' });
   const del = danger.getByRole('button', { name: 'Delete project' });
   await expect(del).toBeDisabled();

@@ -1,17 +1,24 @@
 'use client';
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { basicSetup } from 'codemirror';
+import { snippet } from '@codemirror/autocomplete';
 import { indentWithTab } from '@codemirror/commands';
-import { Annotation, EditorState, Prec } from '@codemirror/state';
+import { Annotation, Compartment, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ProjectFile, ProjectFileWithContent } from '@latex-cloud/shared';
 import { Alert, Button, Spinner } from '@latex-cloud/ui';
 import { ApiError, apiFetch } from '../../../lib/api';
-import { latexCompletions } from '../../../lib/editor/completions';
 import { FileSession, type SaveStatus } from '../../../lib/editor/file-session';
 import { languageFor, languageName } from '../../../lib/editor/languages';
+import { baseSetup, latexSetup, plainSetup } from '../../../lib/editor/latex/extension';
+import {
+  type EditorSettings,
+  loadSettings,
+  onSettingsChange,
+} from '../../../lib/editor/latex/settings';
 import { editorTheme, syntaxTheme } from '../../../lib/editor/theme';
+import { mathContextAt } from '../../../lib/latex/math-context';
+import type { ProjectIndex } from '../../../lib/latex/project-index';
 
 export interface SourceEditorHandle {
   /** Saves pending edits now. Resolves when the server has them (or saving failed). */
@@ -20,6 +27,11 @@ export interface SourceEditorHandle {
   hasUnsavedChanges(): boolean;
   /** Moves the cursor to a 1-based line and focuses the editor. */
   goToLine(line: number): void;
+  /**
+   * Inserts a snippet at the cursor (symbol palette). With `math`, the
+   * snippet is wrapped in $…$ when the cursor is not already in math.
+   */
+  insert(template: string, opts?: { math?: boolean }): void;
 }
 
 /** Marks programmatic document replacements so they are not treated as user edits. */
@@ -39,8 +51,13 @@ export const SourceEditor = forwardRef<
     onCompile: () => void;
     /** Line to reveal once the file is open (e.g. from a diagnostic). */
     jumpTo?: { line: number; nonce: number } | null;
+    /** Project-wide index for completions and checks; kept in sync with this buffer. */
+    index: ProjectIndex;
   }
->(function SourceEditor({ projectId, file, readOnly, onStatus, onSaved, onCompile, jumpTo }, ref) {
+>(function SourceEditor(
+  { projectId, file, readOnly, onStatus, onSaved, onCompile, jumpTo, index },
+  ref,
+) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const session = useRef<FileSession | null>(null);
@@ -49,11 +66,22 @@ export const SourceEditor = forwardRef<
   // Keep latest callbacks without re-creating the editor.
   const cb = useRef({ onStatus, onSaved, onCompile });
   cb.current = { onStatus, onSaved, onCompile };
+  const indexRef = useRef(index);
+  indexRef.current = index;
 
   useImperativeHandle(ref, () => ({
     flush: () => session.current?.flush() ?? Promise.resolve(),
     focus: () => view.current?.focus(),
     hasUnsavedChanges: () => session.current?.hasUnsavedChanges ?? false,
+    insert: (template: string, opts?: { math?: boolean }) => {
+      const v = view.current;
+      if (!v || v.state.readOnly) return;
+      const { from, to } = v.state.selection.main;
+      const inMath = mathContextAt(v.state.doc.toString(), from).inMath;
+      const body = opts?.math && !inMath ? `$${template}$` : template;
+      snippet(body.includes('${') ? body : `${body}\${}`)(v, { label: 'palette' }, from, to);
+      v.focus();
+    },
     goToLine: (line: number) => {
       const v = view.current;
       if (!v) return;
@@ -68,6 +96,7 @@ export const SourceEditor = forwardRef<
 
   useEffect(() => {
     let cancelled = false;
+    let unsubscribeSettings = () => {};
     const url = `/api/v1/projects/${projectId}/files/${file.id}`;
     setLoad({ kind: 'loading' });
     setConflict(false);
@@ -103,13 +132,29 @@ export const SourceEditor = forwardRef<
         session.current = s;
         cb.current.onStatus({ kind: 'saved' });
 
-        const isLatex = languageName(loaded.path) === 'latex';
+        const lang = languageName(loaded.path);
+        const isLatex = lang === 'latex';
+        const path = loaded.path;
+        indexRef.current.update(path, loaded.content);
+        const settingsNow = () => loadSettings();
+        const configure = (st: EditorSettings) => [
+          baseSetup(st),
+          isLatex
+            ? latexSetup(
+                { index: () => indexRef.current, path: () => path, settings: settingsNow },
+                st,
+              )
+            : plainSetup(st),
+          isLatex ? [] : keymap.of([indentWithTab]),
+        ];
+        const configurable = new Compartment();
+        let indexTimer: ReturnType<typeof setTimeout> | null = null;
         view.current = holder.view = new EditorView({
           parent: host.current,
           state: EditorState.create({
             doc: loaded.content,
             extensions: [
-              basicSetup,
+              configurable.of(configure(settingsNow())),
               Prec.highest(
                 keymap.of([
                   {
@@ -123,7 +168,6 @@ export const SourceEditor = forwardRef<
                 ]),
               ),
               keymap.of([
-                indentWithTab,
                 {
                   key: 'Mod-s',
                   preventDefault: true,
@@ -134,22 +178,27 @@ export const SourceEditor = forwardRef<
                 },
               ]),
               languageFor(loaded.path),
-              isLatex
-                ? EditorState.languageData.of(() => [{ autocomplete: latexCompletions }])
-                : [],
               editorTheme,
               syntaxTheme,
-              EditorView.lineWrapping,
               EditorState.readOnly.of(readOnly),
               EditorView.editable.of(!readOnly),
               EditorView.contentAttributes.of({ 'aria-label': `Source of ${loaded.path}` }),
               EditorView.updateListener.of((u) => {
-                if (u.docChanged && !u.transactions.some((tr) => tr.annotation(external)))
-                  s.markChanged();
+                if (!u.docChanged) return;
+                if (!u.transactions.some((tr) => tr.annotation(external))) s.markChanged();
+                // Keep \cite keys, labels and macros current while typing.
+                if (indexTimer) clearTimeout(indexTimer);
+                indexTimer = setTimeout(
+                  () => indexRef.current.update(path, u.state.doc.toString()),
+                  250,
+                );
               }),
             ],
           }),
         });
+        unsubscribeSettings = onSettingsChange((st) =>
+          view.current?.dispatch({ effects: configurable.reconfigure(configure(st)) }),
+        );
         setLoad({ kind: 'ready' });
       })
       .catch((e: unknown) => {
@@ -162,6 +211,7 @@ export const SourceEditor = forwardRef<
 
     return () => {
       cancelled = true;
+      unsubscribeSettings();
       const s = session.current;
       // Final save of the outgoing file, then tear down.
       if (s?.hasUnsavedChanges) void s.flush().finally(() => s.dispose());

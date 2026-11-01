@@ -26,7 +26,12 @@ import { ApiError, apiFetch } from '../../../lib/api';
 import type { SaveStatus } from '../../../lib/editor/file-session';
 import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
+import 'katex/dist/katex.min.css';
+import { useProjectIndex } from '../../../lib/latex/use-project-index';
 import { AssetPreview } from './AssetPreview';
+import { EditorSettingsDialog } from './EditorSettingsDialog';
+import { HelpDialog } from './HelpDialog';
+import { SymbolPalette } from './SymbolPalette';
 import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
 import { PdfViewer } from './PdfViewer';
@@ -84,7 +89,9 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const refs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
   const source = useRef<SourceEditorHandle>(null);
-  const shortcuts = useRef<HTMLDialogElement>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [jumpTo, setJumpTo] = useState<{ line: number; nonce: number } | null>(null);
   /** Bumped when the open file is replaced by an upload, to reload the editor. */
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -196,7 +203,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
         target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       if (e.key === '?' && !typing) {
         e.preventDefault();
-        shortcuts.current?.showModal();
+        setHelpOpen(true);
       }
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.defaultPrevented) {
         e.preventDefault();
@@ -206,6 +213,9 @@ export function EditorShell({ projectId }: { projectId: string }) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [focusPanel, compileNow]);
+
+  const openPath = files?.find((f) => f.id === selectedId)?.path ?? null;
+  const index = useProjectIndex(projectId, files, openPath);
 
   if (state.kind !== 'ready') {
     return (
@@ -334,20 +344,32 @@ export function EditorShell({ projectId }: { projectId: string }) {
     selected && selected.kind === 'binary' ? (
       <AssetPreview key={selected.id + selected.sha256} projectId={project.id} file={selected} />
     ) : selected ? (
-      <SourceEditor
-        ref={source}
-        key={`${selected.id}:${reloadNonce}`}
-        projectId={project.id}
-        file={selected}
-        readOnly={!canWrite}
-        onStatus={setSaveStatus}
-        onSaved={(saved) => {
-          setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs);
-          setEditedSinceCompile(true);
-        }}
-        onCompile={compileNow}
-        jumpTo={jumpTo}
-      />
+      <div className="source-wrap">
+        <SourceEditor
+          ref={source}
+          key={`${selected.id}:${reloadNonce}`}
+          projectId={project.id}
+          file={selected}
+          readOnly={!canWrite}
+          onStatus={setSaveStatus}
+          onSaved={(saved) => {
+            setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs);
+            setEditedSinceCompile(true);
+          }}
+          onCompile={compileNow}
+          jumpTo={jumpTo}
+          index={index}
+        />
+        {paletteOpen && canWrite ? (
+          <SymbolPalette
+            onInsert={(tex) => source.current?.insert(tex, { math: true })}
+            onClose={() => {
+              setPaletteOpen(false);
+              source.current?.focus();
+            }}
+          />
+        ) : null}
+      </div>
     ) : (
       <EmptyState title={files?.length ? 'No file open' : 'No files yet'}>
         {files?.length
@@ -357,11 +379,34 @@ export function EditorShell({ projectId }: { projectId: string }) {
             : 'This project is empty.'}
       </EmptyState>
     ),
-    canWrite ? null : (
-      <Badge tone="neutral" dot={false}>
-        read-only
-      </Badge>
-    ),
+    <>
+      {canWrite ? null : (
+        <Badge tone="neutral" dot={false}>
+          read-only
+        </Badge>
+      )}
+      {selected && selected.kind === 'text' && canWrite ? (
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-pressed={paletteOpen}
+          onClick={() => setPaletteOpen((o) => !o)}
+          title="Math symbol palette"
+          data-testid="palette-toggle"
+        >
+          Σ Symbols
+        </Button>
+      ) : null}
+      <Button
+        size="sm"
+        variant="ghost"
+        onClick={() => setSettingsOpen(true)}
+        title="Editor settings"
+        aria-label="Editor settings"
+      >
+        ⚙
+      </Button>
+    </>,
   );
 
   const latest = build.latest;
@@ -502,8 +547,8 @@ export function EditorShell({ projectId }: { projectId: string }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => shortcuts.current?.showModal()}
-          aria-label="Keyboard shortcuts"
+          onClick={() => setHelpOpen(true)}
+          aria-label="Help: shortcuts and snippets"
         >
           <Kbd>?</Kbd>
         </Button>
@@ -564,73 +609,8 @@ export function EditorShell({ projectId }: { projectId: string }) {
         </PanelGroup>
       </div>
 
-      <dialog
-        ref={shortcuts}
-        className="shortcuts"
-        aria-labelledby="shortcuts-title"
-        onClick={(e) => e.target === shortcuts.current && shortcuts.current?.close()}
-      >
-        <h2 id="shortcuts-title">Keyboard shortcuts</h2>
-        <table>
-          <tbody>
-            {PANELS.map((p) => (
-              <tr key={p.id}>
-                <td>Focus {p.label}</td>
-                <td>
-                  <Kbd>Alt</Kbd> <Kbd>{p.key}</Kbd>
-                </td>
-              </tr>
-            ))}
-            <tr>
-              <td>Compile</td>
-              <td>
-                <Kbd>Ctrl/⌘</Kbd> <Kbd>Enter</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Save now (autosave is on)</td>
-              <td>
-                <Kbd>Ctrl/⌘</Kbd> <Kbd>S</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Find / replace in file</td>
-              <td>
-                <Kbd>Ctrl/⌘</Kbd> <Kbd>F</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Autocomplete LaTeX commands</td>
-              <td>
-                <Kbd>\</Kbd> or <Kbd>Ctrl</Kbd> <Kbd>Space</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Rename / delete selected file</td>
-              <td>
-                <Kbd>F2</Kbd> / <Kbd>Del</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Change theme</td>
-              <td>
-                <Kbd>Alt</Kbd> <Kbd>Shift</Kbd> <Kbd>T</Kbd>
-              </td>
-            </tr>
-            <tr>
-              <td>Show shortcuts</td>
-              <td>
-                <Kbd>?</Kbd>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-        <form method="dialog" style={{ marginTop: 16, textAlign: 'right' }}>
-          <Button type="submit" size="sm" autoFocus>
-            Close
-          </Button>
-        </form>
-      </dialog>
+      <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <EditorSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
   );
 }

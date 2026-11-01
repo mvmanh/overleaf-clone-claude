@@ -22,6 +22,7 @@ import {
   type ProjectFile,
   type ProjectFileListResponse,
   type ProjectFileWithContent,
+  type ProjectTextContentsResponse,
   RenameFileRequest,
   MAX_UPLOAD_BYTES,
   ProjectPath,
@@ -70,6 +71,15 @@ export class FilesController {
     @Body(new ZodPipe(CreateFileRequest)) body: CreateFileRequest,
   ): Promise<ProjectFile> {
     return this.files.create(user.id, projectId, body);
+  }
+
+  /** Must stay above `:fileId` routes. */
+  @Get('contents')
+  contents(
+    @CurrentUser() user: SessionUser,
+    @Param('projectId') projectId: string,
+  ): Promise<ProjectTextContentsResponse> {
+    return this.files.textContents(user.id, projectId);
   }
 
   /** Multipart: `file`, `path` (target project path) and optional `overwrite=true`. */

@@ -141,3 +141,16 @@ export type ImportSkippedEntry = z.infer<typeof ImportSkippedEntry>;
 
 export const UploadFileResponse = z.object({ file: ProjectFile, replaced: z.boolean() });
 export type UploadFileResponse = z.infer<typeof UploadFileResponse>;
+
+/** All text files with content, for the editor's project index (\cite keys, labels, macros). */
+export const ProjectTextContentsResponse = z.object({
+  files: z.array(
+    z.object({ id: z.string().uuid(), path: z.string(), sha256: z.string(), content: z.string() }),
+  ),
+  /** True when the size budget was exhausted and some files were left out. */
+  truncated: z.boolean(),
+});
+export type ProjectTextContentsResponse = z.infer<typeof ProjectTextContentsResponse>;
+
+/** Size budget for one ProjectTextContentsResponse. */
+export const MAX_TEXT_CONTENTS_BYTES = 20 * 1024 * 1024;

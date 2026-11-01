@@ -246,3 +246,18 @@ describe('rename / delete / root file', () => {
     await as('alice').get(`/api/v1/projects/${id}/files/${main.id}`).expect(404);
   });
 });
+
+describe('text contents (editor index)', () => {
+  it('returns every text file with content to members only', async () => {
+    const id = await project('cs');
+    const res = await as('carol').get(`/api/v1/projects/${id}/files/contents`).expect(200);
+    expect(res.body.truncated).toBe(false);
+    expect(res.body.files.map((f: { path: string }) => f.path)).toEqual([
+      'main.tex',
+      'references.bib',
+    ]);
+    expect(res.body.files[1].content).toContain('@book{knuth1998');
+    const outsider = SEED_PROJECTS.find((p) => p.owner === 'carol@example.com')!.id;
+    await as('alice').get(`/api/v1/projects/${outsider}/files/contents`).expect(404);
+  });
+});

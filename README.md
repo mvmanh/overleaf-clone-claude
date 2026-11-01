@@ -217,6 +217,54 @@ docs/                    architecture (spec + ADRs), security, product
 - Binary files are part of every compile revision, so `\includegraphics` works.
 - Limits: 50 MB per file, 150 MB per project, 100 MB per ZIP, 1000 files.
 
+## What the editor intelligence delivers
+
+Everything runs in the browser; nothing is compiled to give suggestions.
+
+- **Project-aware completion.** Suggestions are drawn from the whole project
+  (`GET /projects/:id/files/contents`) together with the live buffer:
+  - `\cite{…}` (natbib/biblatex variants): keys from every `.bib` and
+    `\bibitem`, searchable by key, author or title, with comma lists.
+  - `\ref`/`\eqref`/`\cref`/`\autoref`…: labels with their environment,
+    file and line.
+  - `\input`/`\include`: files; `\includegraphics`: images only (with key
+    completion in `[...]`).
+  - `\begin{…}` inserts the full environment body; `\end{…}` proposes the
+    innermost open environment.
+  - Also completes `\usepackage`, `\documentclass`, `\usetikzlibrary`,
+    `\bibliographystyle`, colours, float placements and label prefixes
+    (`eq:`, `fig:`, `thm:`, …).
+  - Commands come from a catalogue of 400+ commands with rendered glyphs, plus
+    the project's own `\newcommand`, `\DeclareMathOperator` and
+    `\newtheorem`. Ranking adapts to math vs text, the loaded packages and
+    what you use most.
+- **Math typing.**
+  - About 100 auto-expansions work inside math: `//`→`\frac{}{}`, `x1`→`x_1`,
+    `<=`→`\leq`, `RR`→`\mathbb{R}`, `@a`→`\alpha`, `xhat`→`\hat{x}`,
+    `lr(`→`\left( \right)`, and more.
+  - In text, `mk`/`dm`/`beg` open inline math, display math or an environment.
+  - Each expansion is a single undo step, so Ctrl/⌘+Z keeps exactly what you
+    typed.
+- **Snippets.** 70 VS Code-style snippets (`fig`, `tab`, `ali`, `thm`,
+  `pmat`, `cases`, `taylor`, …) with Tab-stops. Tab past the last field exits.
+- **Live math preview.** A KaTeX preview of the formula under the cursor uses
+  your project macros. The completion info panel shows a preview for each
+  symbol.
+- **Checks.** Unbalanced `\begin`/`\end`, unknown `\ref` labels, unknown
+  `\cite` keys and duplicate labels are flagged as you type.
+- **Toolbar.**
+  - Σ Symbols: a searchable symbol palette by category.
+  - ⚙: settings stored per browser — completion while typing or on demand,
+    math auto-expansion, text shortcuts, preview, checks, auto-close, wrapping
+    and font size.
+  - ?: a searchable reference of every snippet, expansion and shortcut.
+- **Shortcuts.**
+  - Ctrl/⌘+B / I: bold / italic, math-aware.
+  - Ctrl/⌘+M: inline math; Ctrl/⌘+Shift+M: display math.
+  - Ctrl/⌘+Shift+E: wrap in an environment.
+  - Enter after `\begin{…}`: closes the environment.
+  - Ctrl+Space: all completions.
+
 ## Compile pipeline
 
 1. **Compile** (button or Ctrl/⌘+Enter) flushes unsaved edits, then the API

@@ -9,6 +9,8 @@ import {
   isTextPath,
   MAX_FILES_PER_PROJECT,
   MAX_PROJECT_BYTES,
+  MAX_TEXT_CONTENTS_BYTES,
+  type ProjectTextContentsResponse,
   MAX_TEXT_FILE_BYTES,
   type ProjectFile,
   type ProjectFileListResponse,
@@ -172,6 +174,31 @@ export class FilesService {
       });
       return { file: toFile(row), replaced: Boolean(existing) };
     });
+  }
+
+  /** Every live text file with its content (viewer+), bounded by a size budget. */
+  async textContents(userId: string, projectId: string): Promise<ProjectTextContentsResponse> {
+    await this.access.requireAction(userId, projectId, 'files:read');
+    const rows = await this.db
+      .selectFrom('project_files')
+      .select(['id', 'path', 'sha256', 'size_bytes', 'content_text'])
+      .where('project_id', '=', projectId)
+      .where('deleted_at', 'is', null)
+      .where('kind', '=', 'text')
+      .orderBy('path')
+      .execute();
+    let budget = MAX_TEXT_CONTENTS_BYTES;
+    const files: ProjectTextContentsResponse['files'] = [];
+    let truncated = false;
+    for (const r of rows) {
+      if (r.size_bytes > budget) {
+        truncated = true;
+        continue;
+      }
+      budget -= r.size_bytes;
+      files.push({ id: r.id, path: r.path, sha256: r.sha256, content: r.content_text ?? '' });
+    }
+    return { files, truncated };
   }
 
   /** Raw bytes of any file (download, image/PDF preview). */
