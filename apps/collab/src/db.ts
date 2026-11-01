@@ -28,8 +28,23 @@ export interface CollabDatabase {
   collab_documents: {
     file_id: string;
     state: Buffer;
+    history_authors: ColumnType<string[], string[] | undefined, string[]>;
     created_at: Timestamp;
     updated_at: Timestamp;
+  };
+  history_blobs: { project_id: string; sha256: string; content: string };
+  file_versions: {
+    id: Generated<string>;
+    project_id: string;
+    file_id: string;
+    path: string;
+    kind: 'text' | 'binary';
+    sha256: string;
+    size_bytes: number;
+    blob_key: string | null;
+    source: 'create' | 'edit' | 'upload' | 'rename' | 'restore' | 'delete' | 'import';
+    authors: ColumnType<string[], string[] | undefined, string[]>;
+    created_at: Timestamp;
   };
   collab_updates: {
     id: Generated<string>;

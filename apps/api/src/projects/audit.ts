@@ -13,6 +13,9 @@ export type AuditAction =
   | 'file.created'
   | 'file.renamed'
   | 'file.deleted'
+  | 'file.restored'
+  | 'label.created'
+  | 'label.deleted'
   | 'file.uploaded'
   | 'file.replaced'
   | 'project.imported';

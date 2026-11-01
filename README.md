@@ -7,14 +7,14 @@ computer science. Independent codebase (no Overleaf CE code — see
 > **Status: multi-user vertical slice.** Sign in, create a project from a
 > template, share it with owner/editor/viewer roles, **edit together in real
 > time** (live text, named cursors, presence, offline edits merged on
-> reconnect), get project-aware LaTeX completion and math snippets, upload
+> reconnect), browse and restore **version history** with labels and diffs, get project-aware LaTeX completion and math snippets, upload
 > figures/fonts, import and export ZIPs, compile in a per-job Docker sandbox,
 > read the PDF and jump from errors to their line. **Trusted local use only** — see
 > [compile sandbox security](docs/security/compile-sandbox.md).
 
 Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
 [`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
-[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [PR 5 notes](docs/product/pr-5-proposal.md) · [Phase 2: collaboration](docs/product/phase-2-collaboration-proposal.md) ([ADR-0014](docs/architecture/ADRs/0014-real-time-collaboration.md))
+[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [PR 5 notes](docs/product/pr-5-proposal.md) · [Phase 2: collaboration](docs/product/phase-2-collaboration-proposal.md) ([ADR-0014](docs/architecture/ADRs/0014-real-time-collaboration.md), [history: ADR-0015](docs/architecture/ADRs/0015-version-history.md))
 
 ## Quick start (one command)
 
@@ -307,6 +307,26 @@ See [ADR-0014](docs/architecture/ADRs/0014-real-time-collaboration.md) for the d
     transactional snapshot).
   - REST saves and text uploads merge into live documents instead of
     overwriting them.
+
+## What version history delivers
+
+See [ADR-0015](docs/architecture/ADRs/0015-version-history.md).
+
+- **History button** in the top bar: a timeline of checkpoints grouped by day.
+  Each entry shows who changed what (created, edited, renamed, uploaded,
+  deleted, restored). Filter by file; ↑/↓ moves through versions and Esc goes
+  back to the editor.
+- **See what changed**: a line diff with word-level highlights and folded
+  unchanged regions, against the previous version or against the current text.
+- **Labels** ("Submitted to ICALP") name the exact state on screen and appear
+  in the timeline. You can download any label, or any version, as a ZIP of the
+  whole project as it was.
+- **Restore** one file to any version. Collaborators see the change live, and
+  the replaced text stays in history. A deleted file comes back with its last
+  text, renamed if its path is taken.
+- Checkpoints are written automatically at most every 5 minutes of editing per
+  file, when the last editor leaves, and on every create, upload, rename and
+  delete. Viewers can browse history but not restore or label.
 
 ## Compile pipeline
 

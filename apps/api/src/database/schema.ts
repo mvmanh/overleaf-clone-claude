@@ -127,6 +127,7 @@ export interface CompileArtifactsTable {
 export interface CollabDocumentsTable {
   file_id: string;
   state: Buffer;
+  history_authors: ColumnType<string[], string[] | undefined, string[]>;
   created_at: Timestamp;
   updated_at: Timestamp;
 }
@@ -137,6 +138,43 @@ export interface CollabUpdatesTable {
   data: Buffer;
   source: 'client' | 'api';
   user_id: string | null;
+  created_at: Timestamp;
+}
+
+export type HistorySource =
+  | 'create'
+  | 'edit'
+  | 'upload'
+  | 'rename'
+  | 'restore'
+  | 'delete'
+  | 'import';
+
+export interface HistoryBlobsTable {
+  project_id: string;
+  sha256: string;
+  content: string;
+}
+
+export interface FileVersionsTable {
+  id: Generated<string>;
+  project_id: string;
+  file_id: string;
+  path: string;
+  kind: 'text' | 'binary';
+  sha256: string;
+  size_bytes: number;
+  blob_key: string | null;
+  source: HistorySource;
+  authors: ColumnType<string[], string[] | undefined, string[]>;
+  created_at: Timestamp;
+}
+
+export interface ProjectLabelsTable {
+  id: Generated<string>;
+  project_id: string;
+  name: string;
+  created_by: string | null;
   created_at: Timestamp;
 }
 
@@ -153,6 +191,9 @@ export interface Database {
   compile_artifacts: CompileArtifactsTable;
   collab_documents: CollabDocumentsTable;
   collab_updates: CollabUpdatesTable;
+  history_blobs: HistoryBlobsTable;
+  file_versions: FileVersionsTable;
+  project_labels: ProjectLabelsTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

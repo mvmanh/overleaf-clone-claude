@@ -22,6 +22,7 @@ import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
 import { randomUUID } from 'node:crypto';
 import { BLOB_STORAGE, type BlobStorage } from '../storage/blob-storage';
+import { recordProjectFiles } from '../history/recorder';
 import { recordAudit } from './audit';
 import { classifyFile, contentTypeFor } from './file-types';
 import { fileBlobKey } from './files.service';
@@ -140,6 +141,7 @@ export class ProjectsService {
           )
           .execute();
       }
+      await recordProjectFiles(trx, projectId, 'import', userId);
       await recordAudit(trx, {
         projectId,
         actorId: userId,
@@ -245,6 +247,7 @@ export class ProjectsService {
           })),
         )
         .execute();
+      await recordProjectFiles(trx, project.id, 'create', userId);
       await recordAudit(trx, {
         projectId: project.id,
         actorId: userId,

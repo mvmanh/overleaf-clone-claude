@@ -15,8 +15,10 @@ import {
   type ProjectFile,
   type ProjectFileListResponse,
   type ProjectFileWithContent,
+  HISTORY_CHECKPOINT_MS,
 } from '@latex-cloud/shared';
 import { CollabEvents } from '../collab/collab-events';
+import { recordVersion } from '../history/recorder';
 import { CollabTextService } from '../collab/collab-text.service';
 import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
@@ -176,6 +178,18 @@ export class FilesService {
         .set({ updated_at: sql`now()` })
         .where('id', '=', projectId)
         .execute();
+      await recordVersion(trx, {
+        projectId,
+        fileId: row.id,
+        path: row.path,
+        kind: classified.kind,
+        sha256: row.sha256,
+        sizeBytes: row.size_bytes,
+        blobKey: blobKey,
+        text: classified.kind === 'text' ? classified.text : null,
+        source: 'upload',
+        authors: [userId],
+      });
       await recordAudit(trx, {
         projectId,
         actorId: userId,
@@ -349,6 +363,18 @@ export class FilesService {
           })
           .returning(FILE_COLUMNS)
           .executeTakeFirstOrThrow();
+        await recordVersion(trx, {
+          projectId,
+          fileId: row.id,
+          path: row.path,
+          kind: 'text',
+          sha256: row.sha256,
+          sizeBytes: row.size_bytes,
+          blobKey: null,
+          text: req.content,
+          source: 'create',
+          authors: [userId],
+        });
         await recordAudit(trx, {
           projectId,
           actorId: userId,
@@ -432,6 +458,22 @@ export class FilesService {
         .set({ updated_at: sql`now()` })
         .where('id', '=', projectId)
         .execute();
+      await recordVersion(
+        trx,
+        {
+          projectId,
+          fileId,
+          path: row.path,
+          kind: 'text',
+          sha256: newHash,
+          sizeBytes: row.size_bytes,
+          blobKey: null,
+          text: content,
+          source: 'edit',
+          authors: [userId],
+        },
+        { coalesceMs: HISTORY_CHECKPOINT_MS },
+      );
       return { file: toFile(row), viaCollab };
     });
     if (result.viaCollab) await this.events.publish({ type: 'file-updated', projectId, fileId });
@@ -485,6 +527,19 @@ export class FilesService {
             .where('id', '=', projectId)
             .execute();
         }
+        const text = current.kind === 'text' ? await this.collabText.liveText(trx, current) : null;
+        await recordVersion(trx, {
+          projectId,
+          fileId,
+          path: newPath,
+          kind: current.kind,
+          sha256: text !== null ? sha256Hex(text) : current.sha256,
+          sizeBytes: text !== null ? Buffer.byteLength(text, 'utf8') : current.size_bytes,
+          blobKey: current.blob_key,
+          text,
+          source: 'rename',
+          authors: [userId],
+        });
         await recordAudit(trx, {
           projectId,
           actorId: userId,
@@ -518,6 +573,20 @@ export class FilesService {
         .set({ deleted_at: sql`now()`, updated_by: userId })
         .where('id', '=', fileId)
         .execute();
+      // The last content is kept, so the deletion can be undone from history.
+      const text = current.kind === 'text' ? await this.collabText.liveText(trx, current) : null;
+      await recordVersion(trx, {
+        projectId,
+        fileId,
+        path: current.path,
+        kind: current.kind,
+        sha256: text !== null ? sha256Hex(text) : current.sha256,
+        sizeBytes: text !== null ? Buffer.byteLength(text, 'utf8') : current.size_bytes,
+        blobKey: current.blob_key,
+        text,
+        source: 'delete',
+        authors: [userId],
+      });
       await recordAudit(trx, {
         projectId,
         actorId: userId,
@@ -536,7 +605,7 @@ export class FilesService {
     if (!isUuid(fileId)) throw notFound('File');
     const row = await db
       .selectFrom('project_files')
-      .select([...FILE_COLUMNS, 'content_text'])
+      .select([...FILE_COLUMNS, 'content_text', 'blob_key'])
       .where('id', '=', fileId)
       .where('project_id', '=', projectId)
       .where('deleted_at', 'is', null)

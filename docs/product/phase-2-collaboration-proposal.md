@@ -7,8 +7,9 @@ Differences from the original proposal: tokens are HMAC (not JWT libraries);
 the update log is written _before_ acknowledging (RPO 0 for acknowledged
 edits) instead of an RPO window; the cross-file snapshot barrier is the
 compile's `REPEATABLE READ` transaction over snapshot + log (every
-acknowledged edit is already committed). Still open: version browser and
-restore, multi-instance collab (document affinity / Redis extension).
+acknowledged edit is already committed). Version browser and restore: done in
+[ADR-0015](../architecture/ADRs/0015-version-history.md). Still open: multi-instance
+collab (document affinity / Redis extension).
 
 ## Scope
 

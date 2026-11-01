@@ -38,6 +38,7 @@ import { useProjectIndex } from '../../../lib/latex/use-project-index';
 import { AssetPreview } from './AssetPreview';
 import { EditorSettingsDialog } from './EditorSettingsDialog';
 import { HelpDialog } from './HelpDialog';
+import { HistoryView } from './HistoryView';
 import { SymbolPalette } from './SymbolPalette';
 import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
@@ -115,6 +116,10 @@ export function EditorShell({ projectId }: { projectId: string }) {
   /** A delete this tab started: no "deleted elsewhere" banner for it. */
   const selfDeleting = useRef<string | null>(null);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  /** Bumped when files change elsewhere, so an open history view reloads. */
+  const [historyKey, setHistoryKey] = useState(0);
+
   const collabState = useCollabSession(projectId, true);
   const collab = collabState.kind === 'ready' ? collabState.session : null;
   const peers = usePeers(collab);
@@ -179,8 +184,10 @@ export function EditorShell({ projectId }: { projectId: string }) {
   // Live project changes pushed by the collab server.
   const onNotice = useCallback(
     (n: CollabNotice) => {
-      if (n.type === 'files-changed') void reloadFiles();
-      else if (n.type === 'project-changed' || n.type === 'role-changed') reloadProject();
+      if (n.type === 'files-changed') {
+        void reloadFiles();
+        setHistoryKey((k) => k + 1);
+      } else if (n.type === 'project-changed' || n.type === 'role-changed') reloadProject();
     },
     [reloadFiles, reloadProject],
   );
@@ -230,6 +237,9 @@ export function EditorShell({ projectId }: { projectId: string }) {
     return () => window.removeEventListener('beforeunload', onBeforeUnload);
   }, []);
 
+  const historyOpenRef = useRef(false);
+  historyOpenRef.current = historyOpen;
+
   const focusPanel = useCallback((id: PanelId) => {
     if (id === 'source' && source.current) source.current.focus();
     else refs.current[id]?.focus();
@@ -247,6 +257,10 @@ export function EditorShell({ projectId }: { projectId: string }) {
       const target = e.target as HTMLElement | null;
       const typing =
         target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
+      if (e.key === 'Escape' && historyOpenRef.current && !document.querySelector('dialog[open]')) {
+        setHistoryOpen(false);
+        return;
+      }
       if (e.key === '?' && !typing) {
         e.preventDefault();
         setHelpOpen(true);
@@ -627,6 +641,16 @@ export function EditorShell({ projectId }: { projectId: string }) {
         >
           <Kbd>?</Kbd>
         </Button>
+        <Button
+          size="sm"
+          variant={historyOpen ? 'primary' : 'default'}
+          aria-pressed={historyOpen}
+          onClick={() => setHistoryOpen((o) => !o)}
+          title="History: versions, changes, labels and restore"
+          data-testid="history-toggle"
+        >
+          History
+        </Button>
         <Button size="sm" onClick={() => setOpenDialog('share')}>
           Share
         </Button>
@@ -650,7 +674,28 @@ export function EditorShell({ projectId }: { projectId: string }) {
         onUpdated={(p) => setState({ kind: 'ready', project: p })}
       />
 
-      <div className="editor__workspace">
+      {historyOpen && files ? (
+        <div className="editor__workspace">
+          <HistoryView
+            projectId={project.id}
+            files={files}
+            canWrite={canWrite}
+            currentUserId={user?.id}
+            isOwner={project.role === 'owner'}
+            refreshKey={historyKey}
+            onRestored={() => {
+              void reloadFiles();
+              setEditedSinceCompile(true);
+            }}
+            onOpenFile={(f) => {
+              setHistoryOpen(false);
+              openFile(f);
+            }}
+            onClose={() => setHistoryOpen(false)}
+          />
+        </div>
+      ) : null}
+      <div className="editor__workspace" hidden={historyOpen && Boolean(files)}>
         <PanelGroup
           direction={narrow ? 'vertical' : 'horizontal'}
           autoSaveId={narrow ? 'lc-layout-outer-narrow' : 'lc-layout-outer'}

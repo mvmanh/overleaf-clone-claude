@@ -103,19 +103,26 @@ export class CollabStore {
   async compact(
     fileId: string,
     doc: Y.Doc,
-    opts: { userId: string | null; applyOrigin: unknown },
-  ): Promise<{ text: string; changed: boolean; folded: number }> {
+    opts: {
+      userId: string | null;
+      applyOrigin: unknown;
+      /** The last editor left: checkpoint whatever changed. */
+      final?: boolean;
+      /** Minimum time between edit checkpoints while people keep typing. */
+      checkpointMs: number;
+    },
+  ): Promise<{ text: string; changed: boolean; folded: number; checkpoint: boolean }> {
     return this.db.transaction().execute(async (trx) => {
       const file = await trx
         .selectFrom('project_files')
-        .select(['sha256'])
+        .select(['sha256', 'project_id', 'path', 'deleted_at'])
         .where('id', '=', fileId)
         .forNoKeyUpdate()
         .executeTakeFirst();
-      if (!file) return { text: textOf(doc), changed: false, folded: 0 };
+      if (!file) return { text: textOf(doc), changed: false, folded: 0, checkpoint: false };
       const rows = await trx
         .selectFrom('collab_updates')
-        .select(['id', 'data'])
+        .select(['id', 'data', 'user_id'])
         .where('file_id', '=', fileId)
         .orderBy('id')
         .execute();
@@ -132,10 +139,49 @@ export class CollabStore {
       );
       const state = Buffer.from(Y.encodeStateAsUpdate(doc));
       const text = textOf(doc);
+      const prior = await trx
+        .selectFrom('collab_documents')
+        .select('history_authors')
+        .where('file_id', '=', fileId)
+        .executeTakeFirst();
+      const authors = [
+        ...new Set([
+          ...(prior?.history_authors ?? []),
+          ...rows.flatMap((r) => (r.user_id ? [r.user_id] : [])),
+        ]),
+      ];
+      const sha = sha256Hex(text);
+      const checkpoint = !file.deleted_at && (await this.checkpointDue(trx, fileId, sha, opts));
+      if (checkpoint) {
+        await trx
+          .insertInto('history_blobs')
+          .values({ project_id: file.project_id, sha256: sha, content: text })
+          .onConflict((oc) => oc.columns(['project_id', 'sha256']).doNothing())
+          .execute();
+        await trx
+          .insertInto('file_versions')
+          .values({
+            project_id: file.project_id,
+            file_id: fileId,
+            path: file.path,
+            kind: 'text',
+            sha256: sha,
+            size_bytes: Buffer.byteLength(text, 'utf8'),
+            blob_key: null,
+            source: 'edit',
+            authors: authors.length ? authors : opts.userId ? [opts.userId] : [],
+          })
+          .execute();
+      }
+      const historyAuthors = checkpoint ? [] : authors;
       await trx
         .insertInto('collab_documents')
-        .values({ file_id: fileId, state })
-        .onConflict((oc) => oc.column('file_id').doUpdateSet({ state, updated_at: sql`now()` }))
+        .values({ file_id: fileId, state, history_authors: historyAuthors })
+        .onConflict((oc) =>
+          oc
+            .column('file_id')
+            .doUpdateSet({ state, history_authors: historyAuthors, updated_at: sql`now()` }),
+        )
         .execute();
       if (rows.length) {
         // Exactly the rows folded in: appends committed meanwhile stay in the log.
@@ -144,7 +190,6 @@ export class CollabStore {
           .where('id', '=', sql<string>`any(${sql.val(rows.map((r) => r.id))}::bigint[])`)
           .execute();
       }
-      const sha = sha256Hex(text);
       const changed = sha !== file.sha256;
       if (changed) {
         await trx
@@ -159,7 +204,28 @@ export class CollabStore {
           .where('id', '=', fileId)
           .execute();
       }
-      return { text, changed, folded: rows.length };
+      return { text, changed, folded: rows.length, checkpoint };
     });
+  }
+
+  /** Text differs from the last checkpoint, and it is old enough (or editing ended). */
+  private async checkpointDue(
+    trx: Kysely<CollabDatabase>,
+    fileId: string,
+    sha: string,
+    opts: { final?: boolean; checkpointMs: number },
+  ): Promise<boolean> {
+    const last = await trx
+      .selectFrom('file_versions')
+      .select(['sha256', 'created_at', 'source'])
+      .where('file_id', '=', fileId)
+      .orderBy('created_at', 'desc')
+      .orderBy('id', 'desc')
+      .executeTakeFirst();
+    if (!last) return true;
+    if (last.sha256 === sha && last.source !== 'delete') return false;
+    return (
+      opts.final === true || Date.now() - new Date(last.created_at).getTime() >= opts.checkpointMs
+    );
   }
 }

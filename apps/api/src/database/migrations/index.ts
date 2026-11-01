@@ -3,6 +3,7 @@ import * as m0001 from './0001_users_projects_acl';
 import * as m0002 from './0002_project_files';
 import * as m0003 from './0003_compiles';
 import * as m0004 from './0004_collab';
+import * as m0005 from './0005_history';
 
 /**
  * Static registry (no filesystem globbing) so migrations work identically from
@@ -14,6 +15,7 @@ export const MIGRATIONS: Record<string, Migration> = {
   '0002_project_files': m0002,
   '0003_compiles': m0003,
   '0004_collab': m0004,
+  '0005_history': m0005,
 };
 
 export const migrationProvider: MigrationProvider = {

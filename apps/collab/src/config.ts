@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { HISTORY_CHECKPOINT_MS } from '@latex-cloud/shared';
 import { DEV_COLLAB_TOKEN_SECRET, MIN_COLLAB_SECRET_LENGTH } from '@latex-cloud/collab-protocol';
 
 const list = z
@@ -30,6 +31,8 @@ export const CollabEnv = z.object({
   COLLAB_STORE_DEBOUNCE_MS: z.coerce.number().int().min(50).default(2000),
   /** …but at least this often while people keep typing. */
   COLLAB_STORE_MAX_DEBOUNCE_MS: z.coerce.number().int().min(100).default(10_000),
+  /** Minimum time between history checkpoints of a file while it is being edited. */
+  COLLAB_HISTORY_CHECKPOINT_MS: z.coerce.number().int().min(0).default(HISTORY_CHECKPOINT_MS),
   /** Backstop re-check of every connection's role (events make it immediate). */
   COLLAB_ACCESS_RECHECK_MS: z.coerce.number().int().min(1000).default(60_000),
 });

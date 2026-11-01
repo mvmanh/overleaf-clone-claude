@@ -7,5 +7,6 @@ export * from './files';
 export * from './diagnostics';
 export * from './compiles';
 export * from './collab';
+export * from './history';
 
 export const API_PREFIX = '/api/v1';

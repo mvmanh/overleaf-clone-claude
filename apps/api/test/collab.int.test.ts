@@ -330,6 +330,43 @@ describe('editing together', () => {
   });
 });
 
+describe('history', () => {
+  it('ends a collaborative session with a checkpoint crediting its editors', async () => {
+    const name = fileDocName(projectId, mainId);
+    const a = await connect(name, await token('alice'));
+    const b = await connect(name, await token('bob'));
+    a.text.insert(0, '% alice checkpoint\n');
+    b.text.insert(0, '% bob checkpoint\n');
+    await settled(a);
+    await settled(b);
+    a.provider.destroy();
+    b.provider.destroy();
+    const db = createDb(dbUrl, 1);
+    await until(async () => {
+      const v = await db
+        .selectFrom('file_versions')
+        .innerJoin('history_blobs', (j) =>
+          j
+            .onRef('history_blobs.sha256', '=', 'file_versions.sha256')
+            .onRef('history_blobs.project_id', '=', 'file_versions.project_id'),
+        )
+        .select(['file_versions.source', 'file_versions.authors', 'history_blobs.content'])
+        .where('file_versions.file_id', '=', mainId)
+        .orderBy('file_versions.created_at', 'desc')
+        .executeTakeFirst();
+      return Boolean(
+        v &&
+          v.source === 'edit' &&
+          v.content.includes('% alice checkpoint') &&
+          v.content.includes('% bob checkpoint') &&
+          v.authors.includes(ids.alice) &&
+          v.authors.includes(ids.bob),
+      );
+    }, 'checkpoint with both authors');
+    await db.destroy();
+  });
+});
+
 describe('presence', () => {
   it('stamps the authenticated identity on awareness (no spoofing)', async () => {
     const room = projectRoomName(projectId);

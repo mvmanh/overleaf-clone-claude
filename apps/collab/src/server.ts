@@ -89,6 +89,7 @@ export function createCollabServer(
   if (ProtocolY.Doc !== Y.Doc) throw new Error('two Yjs instances are loaded; fix the packaging');
   const db = deps.db ?? createCollabDb(config.DATABASE_URL, config.DATABASE_POOL_MAX);
   const ownsDb = !deps.db;
+  let closing = false;
   const store = new CollabStore(db);
   const access = new CollabAccess(db);
   const allowedOrigins = new Set(config.WEB_ORIGIN.map((o) => new URL(o).origin));
@@ -235,13 +236,37 @@ export function createCollabServer(
       }
     },
 
-    async onStoreDocument({ document, documentName, lastContext }) {
+    /**
+     * The last editor left: checkpoint the session in history (the debounced
+     * store may already have run, with nothing left to save). Never blocks
+     * the unload — a failed checkpoint is retried by the next session.
+     */
+    async beforeUnloadDocument({ document, documentName }) {
+      const ref = parseCollabDocName(documentName);
+      if (ref?.kind !== 'file') return;
+      try {
+        const r = await store.compact(ref.fileId, document, {
+          userId: null,
+          applyOrigin: SERVER_ORIGIN,
+          final: true,
+          checkpointMs: config.COLLAB_HISTORY_CHECKPOINT_MS,
+        });
+        if (r.checkpoint) log('info', 'checkpoint', { doc: documentName });
+      } catch (e) {
+        log('error', 'checkpoint.failed', { doc: documentName, message: String(e) });
+      }
+    },
+
+    async onStoreDocument({ document, documentName, lastContext, clientsCount }) {
       const ref = parseCollabDocName(documentName);
       if (ref?.kind !== 'file') return;
       const started = Date.now();
       const r = await store.compact(ref.fileId, document, {
         userId: (lastContext as CollabContext | undefined)?.userId ?? null,
         applyOrigin: SERVER_ORIGIN,
+        // Last editor left (or shutdown): checkpoint the session's changes.
+        final: clientsCount === 0 || closing,
+        checkpointMs: config.COLLAB_HISTORY_CHECKPOINT_MS,
       });
       // Other files' sizes and hashes changed: clients refresh the tree and
       // the autocomplete index (labels, \cite keys defined in this file).
@@ -253,6 +278,7 @@ export function createCollabServer(
         doc: documentName,
         folded: r.folded,
         changed: r.changed,
+        checkpoint: r.checkpoint,
         ms: Date.now() - started,
       });
     },
@@ -381,6 +407,7 @@ export function createCollabServer(
       return { port: server.address.port };
     },
     async close() {
+      closing = true;
       if (sweepTimer) clearInterval(sweepTimer);
       // Snapshot everything still open before the process goes away.
       hocuspocus.flushPendingStores();

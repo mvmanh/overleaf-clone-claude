@@ -23,6 +23,7 @@
     "@latex-cloud/ui": "workspace:*",
     "@lezer/highlight": "1.2.5",
     "codemirror": "6.0.2",
+    "diff": "9.0.0",
     "katex": "0.16.47",
     "next": "15.5.28",
     "pdfjs-dist": "4.10.38",
