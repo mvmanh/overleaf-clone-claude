@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { LoginRequest, ProjectRole, roleSatisfies } from './index';
+import {
+  can,
+  CreateProjectRequest,
+  InviteMemberRequest,
+  LoginRequest,
+  type ProjectAction,
+  ProjectRole,
+  roleSatisfies,
+  UpdateMemberRequest,
+  UpdateProjectRequest,
+} from './index';
 
 describe('roleSatisfies', () => {
   it('orders viewer < editor < owner', () => {
@@ -25,5 +35,43 @@ describe('LoginRequest', () => {
     expect(LoginRequest.safeParse({ email: 'a@b.co', password: 'x'.repeat(1025) }).success).toBe(
       false,
     );
+  });
+});
+
+describe('project mutation contracts', () => {
+  it('trims names and defaults the engine', () => {
+    expect(CreateProjectRequest.parse({ name: '  Thesis  ' })).toEqual({
+      name: 'Thesis',
+      engine: 'pdflatex',
+    });
+  });
+
+  it.each(['', '   ', 'x'.repeat(201), 'bad\u0000name'])('rejects name %j', (name) => {
+    expect(CreateProjectRequest.safeParse({ name }).success).toBe(false);
+  });
+
+  it('requires at least one field and rejects unknown fields on update', () => {
+    expect(UpdateProjectRequest.safeParse({}).success).toBe(false);
+    expect(UpdateProjectRequest.safeParse({ ownerId: 'x' }).success).toBe(false);
+    expect(UpdateProjectRequest.safeParse({ engine: 'xelatex' }).success).toBe(true);
+  });
+
+  it('never allows granting owner through invite or role change', () => {
+    expect(InviteMemberRequest.safeParse({ email: 'a@b.co', role: 'owner' }).success).toBe(false);
+    expect(UpdateMemberRequest.safeParse({ role: 'owner' }).success).toBe(false);
+  });
+});
+
+describe('can', () => {
+  it.each<[ProjectRole, ProjectAction, boolean]>([
+    ['viewer', 'project:read', true],
+    ['viewer', 'project:update', false],
+    ['editor', 'project:update', true],
+    ['editor', 'members:manage', false],
+    ['editor', 'project:delete', false],
+    ['owner', 'project:delete', true],
+    ['owner', 'members:manage', true],
+  ])('%s %s -> %s', (role, action, expected) => {
+    expect(can(role, action)).toBe(expected);
   });
 });

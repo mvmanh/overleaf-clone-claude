@@ -18,7 +18,9 @@ import {
 } from '@latex-cloud/shared';
 import { ApiException } from '../common/api-exception';
 import { Public } from '../common/public.decorator';
-import { FixedWindowRateLimiter } from '../common/rate-limiter';
+import { type RateLimiter, RedisRateLimiter } from '../common/rate-limiter';
+import { REDIS } from '../health/dependencies';
+import type { Redis } from 'ioredis';
 import { ZodPipe } from '../common/zod.pipe';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { AUTH_PROVIDER, type AuthProvider } from './auth-provider';
@@ -27,18 +29,21 @@ import { SessionService } from './session.service';
 
 @Controller('auth')
 export class AuthController {
-  private readonly emailLimiter: FixedWindowRateLimiter;
-  private readonly ipLimiter: FixedWindowRateLimiter;
+  private readonly emailLimiter: RateLimiter;
+  private readonly ipLimiter: RateLimiter;
 
   constructor(
     @Inject(AUTH_PROVIDER) private readonly provider: AuthProvider,
     private readonly sessions: SessionService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(REDIS) redis: Redis,
   ) {
     const window = 15 * 60_000;
-    this.emailLimiter = new FixedWindowRateLimiter(config.LOGIN_RATE_LIMIT_PER_15M, window);
+    const prefix = config.RATE_LIMIT_KEY_PREFIX;
+    const limit = config.LOGIN_RATE_LIMIT_PER_15M;
+    this.emailLimiter = new RedisRateLimiter(redis, 'login-email', limit, window, prefix);
     // Shared NATs/offices: the per-IP budget is deliberately looser than per-account.
-    this.ipLimiter = new FixedWindowRateLimiter(config.LOGIN_RATE_LIMIT_PER_15M * 10, window);
+    this.ipLimiter = new RedisRateLimiter(redis, 'login-ip', limit * 10, window, prefix);
   }
 
   private cookieOptions(): CookieOptions {
@@ -58,8 +63,10 @@ export class AuthController {
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<MeResponse> {
-    const ipOk = this.ipLimiter.hit(req.ip ?? 'unknown');
-    const emailOk = this.emailLimiter.hit(body.email);
+    const [ipOk, emailOk] = await Promise.all([
+      this.ipLimiter.hit(req.ip ?? 'unknown'),
+      this.emailLimiter.hit(body.email),
+    ]);
     if (!ipOk || !emailOk) {
       throw new ApiException(
         'RATE_LIMITED',
@@ -76,7 +83,7 @@ export class AuthController {
         HttpStatus.UNAUTHORIZED,
       );
     }
-    this.emailLimiter.reset(body.email);
+    await this.emailLimiter.reset(body.email);
 
     const { token, expiresAt } = await this.sessions.create(user.id, {
       userAgent: req.header('user-agent'),

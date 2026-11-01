@@ -8,6 +8,8 @@ import { useSession } from '../../../components/useSession';
 import { ApiError, apiFetch } from '../../../lib/api';
 import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
+import { SettingsDialog } from './SettingsDialog';
+import { ShareDialog } from './ShareDialog';
 
 type PanelId = 'tree' | 'source' | 'pdf' | 'issues';
 
@@ -30,17 +32,17 @@ type State =
  * explicitly rather than pretending to work.
  */
 export function EditorShell({ projectId }: { projectId: string }) {
-  useSession();
+  const { user } = useSession();
+  const [openDialog, setOpenDialog] = useState<'share' | 'settings' | null>(null);
   const [state, setState] = useState<State>({ kind: 'loading' });
   const refs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
   const dialog = useRef<HTMLDialogElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const reloadProject = useCallback(() => {
     apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}`, ProjectSummary)
-      .then((project) => !cancelled && setState({ kind: 'ready', project }))
+      .then((project) => setState({ kind: 'ready', project }))
       .catch((e: unknown) => {
-        if (cancelled || (e instanceof ApiError && e.status === 401)) return;
+        if (e instanceof ApiError && e.status === 401) return;
         if (e instanceof ApiError && e.status === 404) setState({ kind: 'not-found' });
         else
           setState({
@@ -48,10 +50,9 @@ export function EditorShell({ projectId }: { projectId: string }) {
             message: e instanceof Error ? e.message : 'Could not load project.',
           });
       });
-    return () => {
-      cancelled = true;
-    };
   }, [projectId]);
+
+  useEffect(reloadProject, [reloadProject]);
 
   const focusPanel = useCallback((id: PanelId) => refs.current[id]?.focus(), []);
 
@@ -156,8 +157,28 @@ export function EditorShell({ projectId }: { projectId: string }) {
         >
           <Kbd>?</Kbd>
         </Button>
+        <Button size="sm" onClick={() => setOpenDialog('share')}>
+          Share
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setOpenDialog('settings')}>
+          Settings
+        </Button>
         <ThemeToggle />
       </div>
+
+      <ShareDialog
+        open={openDialog === 'share'}
+        onClose={() => setOpenDialog(null)}
+        project={project}
+        currentUserId={user?.id}
+        onChanged={reloadProject}
+      />
+      <SettingsDialog
+        open={openDialog === 'settings'}
+        onClose={() => setOpenDialog(null)}
+        project={project}
+        onUpdated={(p) => setState({ kind: 'ready', project: p })}
+      />
 
       {panel(
         'tree',

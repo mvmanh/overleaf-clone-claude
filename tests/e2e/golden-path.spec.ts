@@ -36,8 +36,8 @@ test('alice sees only her seeded projects with correct roles and opens the edito
   await expect(page).toHaveURL(/\/projects$/);
   await expect(page.getByTestId('current-user')).toHaveText('Alice Nguyen');
 
+  // Other specs create projects for alice, so assert on the seeded ones only.
   const rows = page.getByTestId('project-row');
-  await expect(rows).toHaveCount(2);
   await expect(rows.filter({ hasText: 'Analytic Number Theory' })).toContainText('owner');
   await expect(rows.filter({ hasText: 'Graph Algorithms Paper' })).toContainText('viewer');
   await expect(page.getByText('Luận văn Thạc sĩ')).toHaveCount(0);

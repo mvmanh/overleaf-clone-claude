@@ -1,6 +1,14 @@
-# PR 2 proposal — Project CRUD + membership ACL
+# PR 2 — Project CRUD + membership ACL
 
-Not started. Begins only after PR 1 is merged.
+**Status: implemented.** Deviations from the original proposal:
+
+- Invite endpoint is `POST /projects/{id}/members/invite` (matching ARCHITECTURE.md §7).
+- Rename/engine change is editor+; members list is visible to every member (viewer+).
+- Ownership transfer is included (`POST /projects/{id}/transfer-ownership`).
+- No new migration was needed: the 0001 schema (partial unique owner index, audit table) already covered it.
+- Invites only reach existing accounts; pending invitations for unknown emails are future work.
+
+Original proposal follows.
 
 ## Scope
 

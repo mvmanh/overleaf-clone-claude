@@ -40,3 +40,41 @@ export function createS3(config: AppConfig): S3Client {
 }
 
 export { HeadBucketCommand };
+
+const pendingConnects = new WeakMap<Redis, Promise<void>>();
+
+/**
+ * Clients are lazy and have no offline queue, so commands fail unless the
+ * connection is `ready`. Concurrent callers share one connection attempt.
+ */
+export async function ensureRedisConnected(redis: Redis, timeoutMs = 2_000): Promise<void> {
+  if (redis.status === 'ready') return;
+  let pending = pendingConnects.get(redis);
+  if (!pending) {
+    pending = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error('redis connect timeout'));
+      }, timeoutMs);
+      const onReady = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = (err: Error) => {
+        cleanup();
+        reject(err);
+      };
+      const cleanup = () => {
+        clearTimeout(timer);
+        redis.off('ready', onReady);
+        redis.off('error', onError);
+        pendingConnects.delete(redis);
+      };
+      redis.once('ready', onReady);
+      redis.once('error', onError);
+      if (redis.status === 'wait' || redis.status === 'end') redis.connect().catch(() => undefined);
+    });
+    pendingConnects.set(redis, pending);
+  }
+  await pending;
+}

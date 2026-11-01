@@ -53,12 +53,13 @@ describe('health', () => {
   });
 
   it('readiness reports DB + migrations up and unreachable deps as down (503)', async () => {
+    // Object storage is always unreachable in this suite, so readiness is degraded.
     const res = await http().get('/api/v1/health/ready').expect(503);
     const body = ReadinessResponse.parse(res.body);
     expect(body.status).toBe('degraded');
     expect(body.checks.database.status).toBe('up');
     expect(body.checks.migrations.status).toBe('up');
-    expect(body.checks.redis.status).toBe('down');
+    expect(body.checks.redis.status).toBe(process.env.TEST_REDIS_URL ? 'up' : 'down');
     expect(JSON.stringify(body)).not.toMatch(/ECONNREFUSED|127\.0\.0\.1/);
   });
 });

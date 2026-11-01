@@ -41,6 +41,8 @@ export const EnvSchema = z
     /** Number of reverse-proxy hops to trust for client IP (express `trust proxy`). */
     TRUST_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
     LOGIN_RATE_LIMIT_PER_15M: z.coerce.number().int().min(1).default(20),
+    /** Namespace for rate-limit keys in Redis (lets environments share a Redis). */
+    RATE_LIMIT_KEY_PREFIX: z.string().min(1).max(64).default('lc:rl:'),
   })
   .transform((env) => ({
     ...env,

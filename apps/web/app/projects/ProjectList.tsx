@@ -6,6 +6,7 @@ import { ProjectListResponse, type ProjectSummary } from '@latex-cloud/shared';
 import { Alert, Badge, Button, EmptyState, type Tone } from '@latex-cloud/ui';
 import { ApiError, apiFetch } from '../../lib/api';
 import { ENGINE_LABELS, relativeTime } from '../../lib/format';
+import { NewProjectDialog } from './NewProjectDialog';
 
 type State =
   | { kind: 'loading' }
@@ -20,6 +21,7 @@ const ROLE_TONE: Record<ProjectSummary['role'], Tone> = {
 
 export function ProjectList() {
   const [state, setState] = useState<State>({ kind: 'loading' });
+  const [creating, setCreating] = useState(false);
 
   const load = useCallback(() => {
     setState({ kind: 'loading' });
@@ -37,6 +39,38 @@ export function ProjectList() {
 
   useEffect(load, [load]);
 
+  // `n` opens the new-project dialog (when not typing in a field).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      if (e.key === 'n' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        setCreating(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <>
+      <div className="page__header">
+        <div>
+          <h1 className="page__title">Projects</h1>
+          <p className="page__subtitle">Projects you own or that were shared with you.</p>
+        </div>
+        <Button variant="primary" onClick={() => setCreating(true)} title="New project (N)">
+          New project
+        </Button>
+      </div>
+      {renderBody(state, load, () => setCreating(true))}
+      <NewProjectDialog open={creating} onClose={() => setCreating(false)} />
+    </>
+  );
+}
+
+function renderBody(state: State, load: () => void, create: () => void) {
   if (state.kind === 'loading') {
     return (
       <div className="project-list" aria-busy="true" aria-label="Loading projects">
@@ -61,9 +95,15 @@ export function ProjectList() {
   if (state.projects.length === 0) {
     return (
       <div className="project-list">
-        <EmptyState title="No projects yet">
-          Projects shared with you will appear here. Creating and importing projects is the next
-          milestone.
+        <EmptyState
+          title="No projects yet"
+          action={
+            <Button variant="primary" onClick={create}>
+              Create your first project
+            </Button>
+          }
+        >
+          Create a project, or ask a collaborator to share one with you.
         </EmptyState>
       </div>
     );

@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Client } from 'pg';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { APP_CONFIG, type AppConfig } from '../src/config/env';
@@ -42,7 +43,10 @@ export async function createTestDatabase(): Promise<{ url: string; drop: () => P
   };
 }
 
-export async function createTestApp(databaseUrl: string): Promise<NestExpressApplication> {
+export async function createTestApp(
+  databaseUrl: string,
+  overrides: Record<string, string> = {},
+): Promise<NestExpressApplication> {
   Object.assign(process.env, {
     NODE_ENV: 'test',
     DATABASE_URL: databaseUrl,
@@ -54,6 +58,9 @@ export async function createTestApp(databaseUrl: string): Promise<NestExpressApp
     S3_SECRET_ACCESS_KEY: 'test-secret',
     WEB_ORIGIN,
     LOGIN_RATE_LIMIT_PER_15M: '5',
+    // Fresh namespace per app so persistent Redis counters never leak between runs.
+    RATE_LIMIT_KEY_PREFIX: `lc:test:${randomBytes(4).toString('hex')}:`,
+    ...overrides,
   });
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({
@@ -63,4 +70,23 @@ export async function createTestApp(databaseUrl: string): Promise<NestExpressApp
   configureApp(app, app.get<AppConfig>(APP_CONFIG));
   await app.init();
   return app;
+}
+
+export const REDIS_AVAILABLE = Boolean(process.env.TEST_REDIS_URL);
+
+/** Logs in through the HTTP API and returns the `lc_session=...` cookie pair. */
+export async function loginCookie(
+  app: NestExpressApplication,
+  email: string,
+  password = TEST_PASSWORD,
+): Promise<string> {
+  const res = await request(app.getHttpServer())
+    .post('/api/v1/auth/login')
+    .set('Origin', WEB_ORIGIN)
+    .send({ email, password });
+  if (res.status !== 200) throw new Error(`login ${email} failed: ${res.status}`);
+  const cookie = ([] as string[])
+    .concat(res.headers['set-cookie'] ?? [])
+    .find((c) => c.startsWith('lc_session='));
+  return cookie!.split(';')[0]!;
 }

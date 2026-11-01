@@ -123,3 +123,98 @@
     padding: var(--lc-space-2) var(--lc-space-4);
   }
 }
+
+.share-invite {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 140px auto;
+  align-items: end;
+  gap: var(--lc-space-2);
+}
+.member-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-md);
+}
+.member {
+  display: flex;
+  align-items: center;
+  gap: var(--lc-space-3);
+  padding: var(--lc-space-2) var(--lc-space-3);
+  border-top: 1px solid var(--lc-border);
+}
+.member:first-child {
+  border-top: none;
+}
+.member .lc-field {
+  width: 120px;
+}
+.member .lc-input {
+  height: 28px;
+  font-size: var(--lc-text-sm);
+}
+.member__avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--lc-accent-soft);
+  color: var(--lc-accent);
+  font-weight: 600;
+  font-size: var(--lc-text-sm);
+}
+.member__who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+.member__name {
+  font-weight: 550;
+}
+.member__email,
+.muted {
+  margin: 0;
+  color: var(--lc-text-muted);
+  font-size: var(--lc-text-sm);
+}
+.danger-zone {
+  border: 1px solid color-mix(in srgb, var(--lc-danger) 35%, var(--lc-border));
+  border-radius: var(--lc-radius-md);
+  padding: var(--lc-space-3) var(--lc-space-4);
+}
+.danger-zone h3 {
+  margin: 0 0 var(--lc-space-2);
+  font-size: var(--lc-text-md);
+  color: var(--lc-danger);
+}
+.danger-zone__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lc-space-2);
+  padding: var(--lc-space-3) 0;
+  border-top: 1px solid var(--lc-border);
+}
+.danger-zone__row:first-of-type {
+  border-top: none;
+}
+.danger-zone__controls {
+  display: flex;
+  align-items: end;
+  gap: var(--lc-space-2);
+}
+.danger-zone__controls .lc-field {
+  flex: 1;
+}
+@media (max-width: 600px) {
+  .share-invite {
+    grid-template-columns: 1fr;
+  }
+  .danger-zone__controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

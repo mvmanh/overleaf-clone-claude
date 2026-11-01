@@ -5,5 +5,7 @@ export { Spinner } from './Spinner';
 export { EmptyState } from './EmptyState';
 export { Alert } from './Alert';
 export { TextField } from './TextField';
+export { SelectField } from './SelectField';
+export { Dialog, type DialogProps } from './Dialog';
 export { ThemeToggle } from './ThemeToggle';
 export { THEME_STORAGE_KEY, themeInitScript, type ThemePreference, nextTheme } from './theme';

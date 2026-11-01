@@ -6,10 +6,11 @@ import { requestIdMiddleware } from './common/request-id.middleware';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { HealthModule } from './health/health.module';
+import { InfraModule } from './infra/infra.module';
 import { ProjectsModule } from './projects/projects.module';
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, AuthModule, HealthModule, ProjectsModule],
+  imports: [ConfigModule, DatabaseModule, InfraModule, AuthModule, HealthModule, ProjectsModule],
   providers: [{ provide: APP_FILTER, useClass: HttpExceptionFilter }],
 })
 export class AppModule implements NestModule {

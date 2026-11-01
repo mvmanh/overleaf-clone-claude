@@ -170,3 +170,21 @@
   margin: var(--lc-space-4) 0 0;
   font-size: var(--lc-text-xl);
 }
+
+.page__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--lc-space-4);
+}
+.dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lc-space-4);
+}
+.dialog-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--lc-space-2);
+  padding-top: var(--lc-space-2);
+}

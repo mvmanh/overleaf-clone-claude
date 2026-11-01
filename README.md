@@ -4,16 +4,17 @@ A private, self-hostable, multi-user LaTeX authoring platform for mathematics an
 computer science. Independent codebase (no Overleaf CE code — see
 [ADR-0001](docs/architecture/ADRs/0001-independent-product.md)).
 
-> **Status: Phase 0 / PR 1 — repository bootstrap.** Sign-in, a seeded project
-> dashboard, the editor layout skeleton, the compiler protocol, a hardened Docker
-> compile executor and a fixture suite are real and tested. Editing, compiling
-> from the UI, uploads and collaboration are **not implemented yet** and the UI
-> says so. **Trusted local use only** — see
+> **Status: PR 2 — project CRUD + membership ACL** (on top of the PR 1
+> bootstrap). Sign-in, creating/renaming/deleting projects, sharing with
+> owner/editor/viewer roles, ownership transfer, the editor layout skeleton,
+> the compiler protocol, a hardened Docker compile executor and a fixture suite
+> are real and tested. Editing, compiling from the UI, uploads and
+> collaboration are **not implemented yet** and the UI says so. **Trusted local use only** — see
 > [compile sandbox security](docs/security/compile-sandbox.md).
 
 Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
 [`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
-[PR 2 proposal](docs/product/pr-2-proposal.md)
+[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 proposal](docs/product/pr-3-proposal.md)
 
 ## Quick start (one command)
 
@@ -68,17 +69,17 @@ origin; Next.js proxies `/api/*` to the API so the session cookie stays first-pa
 
 ## Tests
 
-| Command                                                         | What it runs                                                                                   | Needs                                                                                                      |
-| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `pnpm lint`                                                     | ESLint (flat config), zero warnings                                                            | —                                                                                                          |
-| `pnpm format:check`                                             | Prettier                                                                                       | —                                                                                                          |
-| `pnpm typecheck`                                                | `tsc --noEmit` in every workspace                                                              | —                                                                                                          |
-| `pnpm test`                                                     | Unit tests (Vitest) in every workspace                                                         | —                                                                                                          |
-| `pnpm test:integration`                                         | API against a fresh, migrated, seeded Postgres database per test file                          | Postgres (`TEST_DATABASE_ADMIN_URL`, default `postgres://latex_cloud:latex_cloud@localhost:5432/postgres`) |
-| `pnpm tex-image:build`                                          | Builds the TeX Live sandbox image                                                              | Docker                                                                                                     |
-| `pnpm fixtures:compile`                                         | Compiles every fixture, prints a timing table, writes PDFs to `tests/compile-fixtures/*/_out/` | TeX image (or the trusted local executor)                                                                  |
-| `pnpm --filter @latex-cloud/compile-orchestrator test:fixtures` | Fixture assertions + empirical sandbox isolation tests                                         | TeX image                                                                                                  |
-| `pnpm test:e2e`                                                 | Playwright against a running stack (`E2E_BASE_URL`, default `http://localhost:3000`)           | `pnpm stack:up`                                                                                            |
+| Command                                                         | What it runs                                                                                   | Needs                                                                                                                                                                          |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pnpm lint`                                                     | ESLint (flat config), zero warnings                                                            | —                                                                                                                                                                              |
+| `pnpm format:check`                                             | Prettier                                                                                       | —                                                                                                                                                                              |
+| `pnpm typecheck`                                                | `tsc --noEmit` in every workspace                                                              | —                                                                                                                                                                              |
+| `pnpm test`                                                     | Unit tests (Vitest) in every workspace                                                         | —                                                                                                                                                                              |
+| `pnpm test:integration`                                         | API against a fresh, migrated, seeded Postgres database per test file                          | Postgres (`TEST_DATABASE_ADMIN_URL`, default `postgres://latex_cloud:latex_cloud@localhost:5432/postgres`); set `TEST_REDIS_URL` to also run the multi-replica rate-limit test |
+| `pnpm tex-image:build`                                          | Builds the TeX Live sandbox image                                                              | Docker                                                                                                                                                                         |
+| `pnpm fixtures:compile`                                         | Compiles every fixture, prints a timing table, writes PDFs to `tests/compile-fixtures/*/_out/` | TeX image (or the trusted local executor)                                                                                                                                      |
+| `pnpm --filter @latex-cloud/compile-orchestrator test:fixtures` | Fixture assertions + empirical sandbox isolation tests                                         | TeX image                                                                                                                                                                      |
+| `pnpm test:e2e`                                                 | Playwright against a running stack (`E2E_BASE_URL`, default `http://localhost:3000`)           | `pnpm stack:up`                                                                                                                                                                |
 
 Without Docker, fixtures can run against a host TeX Live install. This executor
 is **unsandboxed** and requires an explicit opt-in; it is refused in production:
@@ -118,7 +119,7 @@ docs/                    architecture (spec + ADRs), security, product
   Pluggable `AuthProvider` for OIDC later ([ADR-0011](docs/architecture/ADRs/0011-authentication.md)).
 - **Schema + migrations:** users, credentials, sessions, projects, project
   members (owner/editor/viewer, at most one owner), audit events. Idempotent dev seed.
-- **ACL:** `ProjectAccessService.requireRole` — non-members get 404; tenant
+- **ACL:** `ProjectAccessService` — non-members get 404; tenant
   separation covered by integration and E2E tests.
 - **API conventions:** `/api/v1` prefix, typed env validation (fails fast, never
   echoes secrets), request IDs, a single error envelope, liveness and readiness
@@ -133,6 +134,38 @@ docs/                    architecture (spec + ADRs), security, product
   adversarial ones, pass in the Docker sandbox.
 - **CI:** format, lint, typecheck, unit, integration (Postgres service), compile
   fixtures in the Docker sandbox, and E2E against the compose stack.
+
+## What PR 2 delivers
+
+- **Project lifecycle:** create (creator becomes owner), rename / change
+  engine (editor+), soft delete (owner; disappears for every member at once).
+- **Membership:** invite existing users as editor or viewer, change roles,
+  remove members (owner), leave a project (any non-owner), transfer ownership
+  (owner → existing member; previous owner becomes editor).
+- **Authorization model** ([ADR-0012](docs/architecture/ADRs/0012-project-authorization.md)):
+  one permission table (`PROJECT_PERMISSIONS` in `packages/shared`) used by the
+  API to enforce and by the UI only to decide which controls to show. Every
+  mutation re-checks the caller's role inside its transaction after locking the
+  project row (`SELECT … FOR UPDATE`), so concurrent requests cannot act on a
+  stale role, and the database guarantees at most one owner.
+- **Audit log:** every mutation writes `project_audit_events` in the same
+  transaction.
+- **Rate limiting across replicas:** login limits are counted in Redis (atomic
+  Lua `INCR`+`PEXPIRE`), degrading to per-process limits if Redis is down.
+- **UI:** "New project" dialog (`N` shortcut), Share dialog (invite, role
+  select, remove, leave), Settings dialog (rename, compiler, transfer
+  ownership, delete with name confirmation), all with error states.
+
+| Method   | Path                                       | Minimum role             |
+| -------- | ------------------------------------------ | ------------------------ |
+| `POST`   | `/api/v1/projects`                         | authenticated            |
+| `PATCH`  | `/api/v1/projects/{id}`                    | editor                   |
+| `DELETE` | `/api/v1/projects/{id}`                    | owner                    |
+| `POST`   | `/api/v1/projects/{id}/transfer-ownership` | owner                    |
+| `GET`    | `/api/v1/projects/{id}/members`            | viewer                   |
+| `POST`   | `/api/v1/projects/{id}/members/invite`     | owner                    |
+| `PATCH`  | `/api/v1/projects/{id}/members/{userId}`   | owner                    |
+| `DELETE` | `/api/v1/projects/{id}/members/{userId}`   | owner (or self to leave) |
 
 ## Measured fixture timings (Docker executor, warm image)
 

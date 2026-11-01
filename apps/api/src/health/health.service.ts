@@ -1,5 +1,5 @@
 import { HeadBucketCommand, type S3Client } from '@aws-sdk/client-s3';
-import { Inject, Injectable, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
 import { type Kysely, sql } from 'kysely';
 import type { DependencyStatus, ReadinessResponse } from '@latex-cloud/shared';
@@ -7,7 +7,7 @@ import { APP_CONFIG, type AppConfig } from '../config/env';
 import { pendingMigrations } from '../database/connection';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
-import { REDIS, S3 } from './dependencies';
+import { ensureRedisConnected, REDIS, S3 } from './dependencies';
 
 const CHECK_TIMEOUT_MS = 2_000;
 
@@ -34,7 +34,7 @@ async function timed(fn: () => Promise<void>): Promise<DependencyStatus> {
 }
 
 @Injectable()
-export class HealthService implements OnApplicationShutdown {
+export class HealthService {
   constructor(
     @Inject(DB) private readonly db: Kysely<Database>,
     @Inject(REDIS) private readonly redis: Redis,
@@ -52,7 +52,7 @@ export class HealthService implements OnApplicationShutdown {
         if (pending.length > 0) throw new CheckFailure(`${pending.length} pending`);
       }),
       timed(async () => {
-        if (this.redis.status === 'wait' || this.redis.status === 'end') await this.redis.connect();
+        await ensureRedisConnected(this.redis);
         const pong = await this.redis.ping();
         if (pong !== 'PONG') throw new CheckFailure('unexpected reply');
       }),
@@ -63,10 +63,5 @@ export class HealthService implements OnApplicationShutdown {
     const checks = { database, migrations, redis, objectStorage };
     const ready = Object.values(checks).every((c) => c.status === 'up');
     return { status: ready ? 'ready' : 'degraded', checks };
-  }
-
-  onApplicationShutdown(): void {
-    this.redis.disconnect();
-    this.s3.destroy();
   }
 }

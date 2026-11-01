@@ -14,3 +14,10 @@ export const ENGINE_LABELS = {
   xelatex: 'XeLaTeX',
   lualatex: 'LuaLaTeX',
 } as const;
+
+export const ENGINE_OPTIONS = (Object.keys(ENGINE_LABELS) as (keyof typeof ENGINE_LABELS)[]).map(
+  (value) => ({
+    value,
+    label: ENGINE_LABELS[value],
+  }),
+);
