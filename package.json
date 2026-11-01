@@ -3,7 +3,7 @@
   "private": true,
   "packageManager": "pnpm@10.28.0",
   "engines": {
-    "node": ">=22.12 <23"
+    "node": ">=22.12"
   },
   "scripts": {
     "build:packages": "pnpm -r --filter \"./packages/**\" build",
@@ -20,12 +20,12 @@
     "db:seed": "pnpm --filter @latex-cloud/api db:seed",
     "fixtures:compile": "pnpm build:packages && pnpm --filter @latex-cloud/compile-orchestrator fixtures",
     "tex-image:build": "docker build -t latex-cloud/texlive:dev infra/tex-images",
-    "infra:up": "docker compose -f infra/compose/docker-compose.yml --env-file .env up -d --wait postgres redis minio",
-    "stack:up": "docker compose -f infra/compose/docker-compose.yml --env-file .env up --build -d --wait",
+    "infra:up": "docker compose -f infra/compose/docker-compose.yml --env-file .env up -d --wait postgres redis storage",
+    "stack:up": "docker compose -f infra/compose/docker-compose.yml --env-file .env up --build -d --wait --remove-orphans",
     "stack:down": "docker compose -f infra/compose/docker-compose.yml --env-file .env down",
     "dev:setup": "pnpm build:packages && pnpm --filter @latex-cloud/api db:migrate && pnpm --filter @latex-cloud/api db:seed && pnpm --filter @latex-cloud/api storage:init",
-    "stack:up:seaweedfs": "docker compose -f infra/compose/docker-compose.yml -f infra/compose/storage-seaweedfs.yml --env-file .env up --build -d --wait",
-    "dev:worker": "pnpm build:packages && pnpm --filter @latex-cloud/compile-orchestrator worker"
+    "dev:worker": "pnpm build:packages && pnpm --filter @latex-cloud/compile-orchestrator worker",
+    "stack:up:minio": "docker compose -f infra/compose/docker-compose.yml -f infra/compose/storage-minio.yml --env-file .env up --build -d --wait"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",

@@ -6,11 +6,11 @@ x-app-env: &app-env
   NODE_ENV: development
   DATABASE_URL: postgres://${POSTGRES_USER:-latex_cloud}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-latex_cloud}
   REDIS_URL: redis://redis:6379
-  S3_ENDPOINT: http://minio:9000
+  S3_ENDPOINT: http://storage:9000
   S3_REGION: us-east-1
   S3_BUCKET: ${S3_BUCKET:-latex-cloud}
-  S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-  S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
   S3_FORCE_PATH_STYLE: 'true'
   WEB_ORIGIN: http://localhost:${WEB_PORT:-3000},http://127.0.0.1:${WEB_PORT:-3000}
   API_PORT: '4000'
@@ -41,23 +41,34 @@ services:
       timeout: 3s
       retries: 20
 
-  minio:
-    # MinIO no longer publishes to Docker Hub; pin a quay.io release (override with MINIO_IMAGE).
-    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z}
-    command: ['server', '/data', '--console-address', ':9001']
+  # S3-compatible object storage. SeaweedFS (Apache-2.0, on Docker Hub, amd64 +
+  # arm64) replaces MinIO, whose public images are no longer available.
+  # S3 authentication uses S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY from .env.
+  # To use MinIO instead (if you have access to its images), add
+  # -f infra/compose/storage-minio.yml.
+  storage:
+    image: chrislusf/seaweedfs:4.48
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY_ID:?set S3_ACCESS_KEY_ID in .env}
+      S3_SECRET_KEY: ${S3_SECRET_ACCESS_KEY:?set S3_SECRET_ACCESS_KEY in .env}
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        mkdir -p /etc/seaweedfs
+        printf '{"identities":[{"name":"latex-cloud","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /etc/seaweedfs/s3.json
+        exec weed server -dir=/data -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=64 -volume.max=100
     ports:
-      - '127.0.0.1:${MINIO_PORT:-9000}:9000'
-      - '127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001'
-    volumes: [minio-data:/data]
+      - '127.0.0.1:${STORAGE_PORT:-9000}:9000'
+    volumes: [storage-data:/data]
     healthcheck:
-      # MinIO images no longer ship curl; `mc ready` is the documented probe.
-      test: ['CMD', 'mc', 'ready', 'local']
+      test:
+        [
+          'CMD-SHELL',
+          'wget -q -O /dev/null http://127.0.0.1:9333/cluster/status && nc -z 127.0.0.1 9000',
+        ]
       interval: 5s
       timeout: 3s
-      retries: 20
+      retries: 30
 
   # One-shot: migrations, dev seed, bucket. API starts only after it succeeds.
   migrate:
@@ -74,7 +85,7 @@ services:
       ]
     depends_on:
       postgres: { condition: service_healthy }
-      minio: { condition: service_healthy }
+      storage: { condition: service_healthy }
     restart: 'no'
 
   api:
@@ -135,4 +146,4 @@ services:
 volumes:
   postgres-data:
   redis-data:
-  minio-data:
+  storage-data:

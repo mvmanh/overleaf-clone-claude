@@ -27,7 +27,7 @@ cp .env.example .env
 pnpm stack:up
 ```
 
-This builds and starts PostgreSQL, Redis, MinIO, a one-shot `migrate` job
+This builds and starts PostgreSQL, Redis, S3-compatible storage (SeaweedFS), a one-shot `migrate` job
 (migrations + dev seed + bucket), the API, the web app, the TeX Live sandbox
 image and the compile worker, and waits until all health checks pass. The
 first run builds the TeX image (~1.7 GB, several minutes). Then open
@@ -42,12 +42,11 @@ first run builds the TeX image (~1.7 GB, several minutes). Then open
 Health: <http://localhost:3000/api/v1/health/ready>. Stop with `pnpm stack:down`
 (add `-v` to the underlying compose command to drop volumes).
 
-> MinIO no longer publishes to Docker Hub; compose uses
-> `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. Set `MINIO_IMAGE` in
-> `.env` to use another MinIO release. If quay.io is unreachable, run
-> `pnpm stack:up:seaweedfs` instead (SeaweedFS S3 gateway, development only).
-> Behind a TLS-intercepting proxy, build with
-> `--secret id=extra_ca,src=/path/to/ca.pem`.
+> Object storage is SeaweedFS (`chrislusf/seaweedfs:4.48`, amd64 + arm64)
+> with S3 authentication from `S3_ACCESS_KEY_ID`/`S3_SECRET_ACCESS_KEY`.
+> MinIO's public images are no longer available; if you have a MinIO image,
+> set `MINIO_IMAGE` and run `pnpm stack:up:minio`. Behind a TLS-intercepting
+> proxy, build with `--secret id=extra_ca,src=/path/to/ca.pem`.
 
 ### Troubleshooting compiles
 
@@ -67,7 +66,7 @@ pnpm install
 ```
 
 ```bash
-pnpm infra:up      # postgres, redis, minio only
+pnpm infra:up      # postgres, redis, storage only
 ```
 
 ```bash
