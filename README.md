@@ -4,16 +4,17 @@ A private, self-hostable, multi-user LaTeX authoring platform for mathematics an
 computer science. Independent codebase (no Overleaf CE code — see
 [ADR-0001](docs/architecture/ADRs/0001-independent-product.md)).
 
-> **Status: single-author vertical slice.** Sign in, create a project from a
-> template, share it with owner/editor/viewer roles, edit `.tex`/`.bib` files in
-> CodeMirror with autosave, upload figures/fonts, import and export ZIPs,
-> compile in a per-job Docker sandbox, read the PDF and jump from errors to
-> their line. Real-time collaboration is **not implemented yet**. **Trusted local use only** — see
+> **Status: multi-user vertical slice.** Sign in, create a project from a
+> template, share it with owner/editor/viewer roles, **edit together in real
+> time** (live text, named cursors, presence, offline edits merged on
+> reconnect), get project-aware LaTeX completion and math snippets, upload
+> figures/fonts, import and export ZIPs, compile in a per-job Docker sandbox,
+> read the PDF and jump from errors to their line. **Trusted local use only** — see
 > [compile sandbox security](docs/security/compile-sandbox.md).
 
 Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
 [`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
-[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [PR 5 notes](docs/product/pr-5-proposal.md) · [next: Phase 2 proposal](docs/product/phase-2-collaboration-proposal.md)
+[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [PR 5 notes](docs/product/pr-5-proposal.md) · [Phase 2: collaboration](docs/product/phase-2-collaboration-proposal.md) ([ADR-0014](docs/architecture/ADRs/0014-real-time-collaboration.md))
 
 ## Quick start (one command)
 
@@ -28,7 +29,8 @@ pnpm stack:up
 ```
 
 This builds and starts PostgreSQL, Redis, S3-compatible storage (SeaweedFS), a one-shot `migrate` job
-(migrations + dev seed + bucket), the API, the web app, the TeX Live sandbox
+(migrations + dev seed + bucket), the API, the real-time collaboration server
+(`collab`, WebSocket on `localhost:4100`), the web app, the TeX Live sandbox
 image and the compile worker, and waits until all health checks pass. The
 first run builds the TeX image (~1.7 GB, several minutes). Then open
 <http://localhost:3000> and sign in:
@@ -74,15 +76,18 @@ pnpm dev:setup         # build shared packages, migrate, seed, create bucket
 ```
 
 ```bash
-pnpm dev           # api on :4000 (node --watch) + web on :3000 (next dev)
+pnpm dev           # api on :4000 (node --watch) + collab on :4100 + web on :3000 (next dev)
 ```
 
 ```bash
 pnpm tex-image:build && pnpm dev:worker   # compile worker (second terminal)
 ```
 
-The API reads the repository-root `.env`. The browser only talks to the web
-origin; Next.js proxies `/api/*` to the API so the session cookie stays first-party.
+The API and collab server read the repository-root `.env`. The browser talks to
+the web origin (Next.js proxies `/api/*` to the API, so the session cookie stays
+first-party) and opens one WebSocket to the collab server with a short-lived
+token from the API. If `COLLAB_TOKEN_SECRET` is unset outside development,
+collaboration is off and the editor falls back to compare-and-swap autosave.
 
 ## Tests
 
@@ -92,7 +97,7 @@ origin; Next.js proxies `/api/*` to the API so the session cookie stays first-pa
 | `pnpm format:check`                                             | Prettier                                                                                       | —                                                                                                                                                                              |
 | `pnpm typecheck`                                                | `tsc --noEmit` in every workspace                                                              | —                                                                                                                                                                              |
 | `pnpm test`                                                     | Unit tests (Vitest) in every workspace                                                         | —                                                                                                                                                                              |
-| `pnpm test:integration`                                         | API against a fresh, migrated, seeded Postgres database per test file                          | Postgres (`TEST_DATABASE_ADMIN_URL`, default `postgres://latex_cloud:latex_cloud@localhost:5432/postgres`); set `TEST_REDIS_URL` to also run the multi-replica rate-limit test |
+| `pnpm test:integration`                                         | API + collab server against a fresh, migrated, seeded Postgres database per test file          | Postgres (`TEST_DATABASE_ADMIN_URL`, default `postgres://latex_cloud:latex_cloud@localhost:5432/postgres`); set `TEST_REDIS_URL` to also run the multi-replica rate-limit test |
 | `pnpm tex-image:build`                                          | Builds the TeX Live sandbox image                                                              | Docker                                                                                                                                                                         |
 | `pnpm fixtures:compile`                                         | Compiles every fixture, prints a timing table, writes PDFs to `tests/compile-fixtures/*/_out/` | TeX image (or the trusted local executor)                                                                                                                                      |
 | `pnpm --filter @latex-cloud/compile-orchestrator test:fixtures` | Fixture assertions + empirical sandbox isolation tests                                         | TeX image                                                                                                                                                                      |
@@ -110,10 +115,13 @@ COMPILE_EXECUTOR=local-trusted-dev ALLOW_TRUSTED_LOCAL_EXECUTOR=true pnpm fixtur
 ```text
 apps/
   web/                   Next.js 15 (App Router): sign-in, dashboard, editor shell
-  api/                   NestJS 11 modular monolith: auth, projects (read + ACL), health
+  api/                   NestJS 11 modular monolith: auth, projects + ACL, files, compiles,
+                         collab tokens and Yjs-aware text reads/writes
+  collab/                Hocuspocus/Yjs server: token auth, durable update log, compaction
   compile-orchestrator/  SandboxExecutor implementations, snapshot/tar protocol, fixture runner
 packages/
-  shared/                Zod API contracts, error envelope, roles
+  shared/                Zod API contracts, error envelope, roles, collab document names
+  collab-protocol/       collab tokens (HMAC), API→collab events, Yjs text helpers
   compiler-protocol/     engines, latexmk args, path validation, revision manifest +
                          fingerprint, job state machine, SandboxExecutor + security gate
   tex-log-parser/        TeX log -> structured diagnostics (file, line, code, hint)
@@ -265,6 +273,41 @@ Everything runs in the browser; nothing is compiled to give suggestions.
   - Enter after `\begin{…}`: closes the environment.
   - Ctrl+Space: all completions.
 
+## What Phase 2 delivers (real-time collaboration)
+
+See [ADR-0014](docs/architecture/ADRs/0014-real-time-collaboration.md) for the design.
+
+- **Editing together.** Every `.tex`/`.bib` file is a Yjs document. Everyone
+  sees each other's edits as they type. Each collaborator has a coloured
+  cursor and selection with their name. Simultaneous edits merge without
+  losing text.
+- **Presence.** Avatars in the top bar show who is in the project and which
+  file they have open; click one to jump to that file. Coloured dots in the
+  file tree mark files others are editing.
+- **"Saved" means saved.** An edit is acknowledged only after it is committed
+  to Postgres, so a server crash or restart loses nothing that was shown as
+  saved.
+- **Offline.** The badge switches to _Offline · edits kept_ as soon as the
+  network drops. Edits made offline merge on reconnect, and closing the tab
+  with unsent edits asks first.
+- **Roles enforced on the server.** Viewers follow along live but cannot
+  change text, even with a modified client. A role change or removal applies
+  to open editors immediately. WebSocket access needs a 10-minute
+  project-scoped token from the API, and the server re-checks membership in
+  the database.
+- **Undo is per person.** Ctrl/⌘+Z undoes your own changes, never a
+  collaborator's. Math auto-expansions still undo to what you typed.
+- **Rename/delete while editing.** A rename doesn't disturb open editors. A
+  deleted file stays open read-only for whoever was editing it, with
+  _Save as new file_, so no text is silently lost.
+- **Everything else stays consistent.**
+  - Compiles, ZIP export, the autocomplete index and the REST API read the live
+    collaborative text.
+  - A compile includes every edit shown as saved, across all files (one
+    transactional snapshot).
+  - REST saves and text uploads merge into live documents instead of
+    overwriting them.
+
 ## Compile pipeline
 
 1. **Compile** (button or Ctrl/⌘+Enter) flushes unsaved edits, then the API
@@ -308,5 +351,10 @@ benchmark; see `ARCHITECTURE.md` §11 for the real benchmark plan.
 All configuration is environment variables, validated at startup
 (`apps/api/src/config/env.ts`, `apps/compile-orchestrator/src/config.ts`).
 See [`.env.example`](.env.example). Production requires `COOKIE_SECURE=true`
-(the default when `NODE_ENV=production`) and, for any compile executor, a
-strong-isolation runtime plus `COMPILE_SANDBOX_ATTESTATION`.
+(the default when `NODE_ENV=production`), for any compile executor a
+strong-isolation runtime plus `COMPILE_SANDBOX_ATTESTATION`, and for
+collaboration a `COLLAB_TOKEN_SECRET` of at least 32 characters, the same on
+the API and the collab server (`apps/collab/src/config.ts`). The built-in
+development secret is refused. `COLLAB_PUBLIC_URL` tells browsers where the
+WebSocket is: `wss://…`, or a same-origin path such as `/collab` behind a
+reverse proxy.

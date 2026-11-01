@@ -1,6 +1,7 @@
 import { type MiddlewareConsumer, Module, type NestModule } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
+import { CollabModule } from './collab/collab.module';
 import { CompilesModule } from './compiles/compiles.module';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { requestIdMiddleware } from './common/request-id.middleware';
@@ -15,6 +16,7 @@ import { ProjectsModule } from './projects/projects.module';
     ConfigModule,
     DatabaseModule,
     InfraModule,
+    CollabModule,
     AuthModule,
     HealthModule,
     ProjectsModule,

@@ -1,0 +1,33 @@
+{
+  "name": "@latex-cloud/collab",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Real-time collaboration server (Hocuspocus/Yjs): one Y.Doc per text file, durable Postgres persistence, project-scoped token auth.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx watch --env-file-if-exists=../../.env src/main.ts",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration"
+  },
+  "dependencies": {
+    "@hocuspocus/common": "4.7.1",
+    "@hocuspocus/server": "4.7.1",
+    "@latex-cloud/collab-protocol": "workspace:*",
+    "@latex-cloud/shared": "workspace:*",
+    "ioredis": "5.11.1",
+    "kysely": "0.28.19",
+    "pg": "8.23.1",
+    "y-protocols": "1.0.7",
+    "yjs": "13.6.33",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@hocuspocus/provider": "4.7.1",
+    "@types/pg": "8.23.1",
+    "tsx": "4.20.6",
+    "vitest": "3.2.4"
+  }
+}

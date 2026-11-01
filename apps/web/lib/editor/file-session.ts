@@ -3,6 +3,8 @@ export type SaveStatus =
   | { kind: 'dirty' }
   | { kind: 'saving' }
   | { kind: 'conflict' }
+  /** Collaborative editing: disconnected; edits are kept and sent on reconnect. */
+  | { kind: 'offline' }
   | { kind: 'error'; message: string };
 
 export interface FileSessionOptions {

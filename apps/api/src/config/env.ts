@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DEV_COLLAB_TOKEN_SECRET } from '@latex-cloud/collab-protocol';
 
 const bool = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
 
@@ -43,12 +44,36 @@ export const EnvSchema = z
     LOGIN_RATE_LIMIT_PER_15M: z.coerce.number().int().min(1).default(20),
     /** Namespace for rate-limit keys in Redis (lets environments share a Redis). */
     RATE_LIMIT_KEY_PREFIX: z.string().min(1).max(64).default('lc:rl:'),
+    /**
+     * Shared with the collab server, which verifies the WebSocket tokens the
+     * API mints. Unset = real-time collaboration is off and the editor falls
+     * back to compare-and-swap autosave.
+     */
+    COLLAB_TOKEN_SECRET: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z.string().min(32).optional(),
+    ),
+    /** Where browsers reach the collab WebSocket: ws(s)://host[:port]/collab or a same-origin path. */
+    COLLAB_PUBLIC_URL: z
+      .string()
+      .regex(/^(wss?:\/\/[^\s]+|\/[^\s]*)$/, 'must be ws(s)://… or an absolute path')
+      .default('ws://localhost:4100/collab'),
   })
   .transform((env) => ({
     ...env,
     COOKIE_SECURE: env.COOKIE_SECURE ?? env.NODE_ENV === 'production',
+    COLLAB_TOKEN_SECRET:
+      env.COLLAB_TOKEN_SECRET ??
+      (env.NODE_ENV === 'development' ? DEV_COLLAB_TOKEN_SECRET : undefined),
   }))
   .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.COLLAB_TOKEN_SECRET === DEV_COLLAB_TOKEN_SECRET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['COLLAB_TOKEN_SECRET'],
+        message: 'must not be the development default in production',
+      });
+    }
     if (env.NODE_ENV === 'production' && !env.COOKIE_SECURE) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,

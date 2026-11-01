@@ -14,6 +14,10 @@ x-app-env: &app-env
   S3_FORCE_PATH_STYLE: 'true'
   WEB_ORIGIN: http://localhost:${WEB_PORT:-3000},http://127.0.0.1:${WEB_PORT:-3000}
   API_PORT: '4000'
+  # Shared by the API (mints WebSocket tokens) and the collab server (verifies them).
+  COLLAB_TOKEN_SECRET: ${COLLAB_TOKEN_SECRET:-latex-cloud-dev-only-collab-secret-change-me}
+  # Browsers connect to the collab server directly.
+  COLLAB_PUBLIC_URL: ws://localhost:${COLLAB_PORT:-4100}/collab
 
 services:
   postgres:
@@ -100,6 +104,24 @@ services:
     security_opt: ['no-new-privileges:true']
     restart: unless-stopped
     # Deliberately NO docker.sock mount and NO TeX toolchain in this image.
+
+  # Real-time collaboration (Hocuspocus/Yjs). Persists to Postgres; Redis
+  # carries API → collab notifications. No TeX, no Docker socket.
+  collab:
+    build: { context: ../.., dockerfile: apps/collab/Dockerfile }
+    image: latex-cloud/collab:dev
+    environment:
+      <<: *app-env
+      COLLAB_PORT: '4100'
+    ports: ['127.0.0.1:${COLLAB_PORT:-4100}:4100']
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    stop_grace_period: 15s
+    restart: unless-stopped
 
   # Build-only service: produces the TeX sandbox image the worker runs per compile.
   texlive:

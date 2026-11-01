@@ -1,11 +1,19 @@
 import { acceptCompletion, completionStatus, snippet } from '@codemirror/autocomplete';
 import { indentMore } from '@codemirror/commands';
-import { Prec } from '@codemirror/state';
+import { Facet, Prec } from '@codemirror/state';
 import { EditorView, type KeyBinding, keymap } from '@codemirror/view';
 import { findAutoExpansion } from '../../latex/data/auto-expand';
 import { mathContextAt } from '../../latex/math-context';
 import type { EditorSettings } from './settings';
 import { escapeSnippetText, withExit } from './snippet-text';
+
+/**
+ * Called between the typed character and its expansion. The collaborative
+ * editor uses Yjs' undo manager (which groups edits by time, not by CM
+ * transaction), so it registers `undoManager.stopCapturing` here to keep the
+ * expansion a separate undo step.
+ */
+export const undoBoundary = Facet.define<() => void>();
 
 /**
  * Typing-time behaviour: auto-expanding snippets and \[ \] / \( \) pairing.
@@ -54,6 +62,7 @@ export function autoExpandHandler(settings: () => EditorSettings) {
       selection: { anchor: from + 1 },
       userEvent: 'input.type',
     });
+    for (const boundary of view.state.facet(undoBoundary)) boundary();
     const start = from + 1 - match.length;
     if (/[#$]\{/.test(match.template)) {
       snippet(withExit(match.template))(

@@ -124,6 +124,22 @@ export interface CompileArtifactsTable {
   sha256: string;
 }
 
+export interface CollabDocumentsTable {
+  file_id: string;
+  state: Buffer;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+}
+
+export interface CollabUpdatesTable {
+  id: Generated<string>;
+  file_id: string;
+  data: Buffer;
+  source: 'client' | 'api';
+  user_id: string | null;
+  created_at: Timestamp;
+}
+
 export interface Database {
   users: UsersTable;
   user_password_credentials: UserPasswordCredentialsTable;
@@ -135,6 +151,8 @@ export interface Database {
   project_revisions: ProjectRevisionsTable;
   compile_jobs: CompileJobsTable;
   compile_artifacts: CompileArtifactsTable;
+  collab_documents: CollabDocumentsTable;
+  collab_updates: CollabUpdatesTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

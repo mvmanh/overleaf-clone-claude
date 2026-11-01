@@ -16,6 +16,8 @@ import {
   type ProjectFileListResponse,
   type ProjectFileWithContent,
 } from '@latex-cloud/shared';
+import { CollabEvents } from '../collab/collab-events';
+import { CollabTextService } from '../collab/collab-text.service';
 import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
@@ -65,6 +67,8 @@ export class FilesService {
     @Inject(DB) private readonly db: Kysely<Database>,
     private readonly access: ProjectAccessService,
     @Inject(BLOB_STORAGE) private readonly blobs: BlobStorage,
+    private readonly collabText: CollabTextService,
+    private readonly events: CollabEvents,
   ) {}
 
   /**
@@ -97,7 +101,7 @@ export class FilesService {
         await this.blobs.put(blobKey, bytes, contentTypeFor(path));
     }
 
-    return this.db.transaction().execute(async (trx) => {
+    const result = await this.db.transaction().execute(async (trx) => {
       await this.access.lockForAction(trx, userId, projectId, 'files:write', 'update');
       const existing = await trx
         .selectFrom('project_files')
@@ -105,6 +109,7 @@ export class FilesService {
         .where('project_id', '=', projectId)
         .where('deleted_at', 'is', null)
         .where(sql`lower(path)`, '=', path.toLowerCase())
+        .forNoKeyUpdate()
         .executeTakeFirst();
       if (existing && !overwrite) throw conflict(`A file named "${existing.path}" already exists.`);
       if (existing && existing.kind !== classified.kind)
@@ -141,6 +146,11 @@ export class FilesService {
         updated_by: userId,
       };
       let row;
+      // Replacing a collaboratively edited file goes through its Yjs state.
+      const viaCollab =
+        existing && classified.kind === 'text'
+          ? await this.collabText.applyExternalEdit(trx, existing.id, classified.text, userId)
+          : false;
       if (existing) {
         row = await trx
           .updateTable('project_files')
@@ -172,8 +182,14 @@ export class FilesService {
         action: existing ? 'file.replaced' : 'file.uploaded',
         metadata: { path, kind: classified.kind, sizeBytes: bytes.byteLength },
       });
-      return { file: toFile(row), replaced: Boolean(existing) };
+      return { file: toFile(row), replaced: Boolean(existing), viaCollab };
     });
+    await this.events.publish(
+      result.viaCollab
+        ? { type: 'file-updated', projectId, fileId: result.file.id }
+        : { type: 'files-changed', projectId },
+    );
+    return { file: result.file, replaced: result.replaced };
   }
 
   /** Every live text file with its content (viewer+), bounded by a size budget. */
@@ -190,13 +206,17 @@ export class FilesService {
     let budget = MAX_TEXT_CONTENTS_BYTES;
     const files: ProjectTextContentsResponse['files'] = [];
     let truncated = false;
-    for (const r of rows) {
+    const included = rows.filter((r) => {
       if (r.size_bytes > budget) {
         truncated = true;
-        continue;
+        return false;
       }
       budget -= r.size_bytes;
-      files.push({ id: r.id, path: r.path, sha256: r.sha256, content: r.content_text ?? '' });
+      return true;
+    });
+    const texts = await this.collabText.liveTexts(this.db, included);
+    for (const r of included) {
+      files.push({ id: r.id, path: r.path, sha256: r.sha256, content: texts.get(r.id) ?? '' });
     }
     return { files, truncated };
   }
@@ -222,8 +242,11 @@ export class FilesService {
       contentType: contentTypeFor(row.path),
       sha256: row.sha256,
     };
-    if (row.kind === 'text')
-      return { ...base, body: Buffer.from(row.content_text ?? '', 'utf8'), inline: false };
+    if (row.kind === 'text') {
+      const text = await this.collabText.liveText(this.db, row);
+      const body = Buffer.from(text, 'utf8');
+      return { ...base, size: body.byteLength, sha256: sha256Hex(text), body, inline: false };
+    }
     const blob = await this.db
       .selectFrom('project_files')
       .select('blob_key')
@@ -243,14 +266,18 @@ export class FilesService {
       .executeTakeFirstOrThrow();
     const rows = await this.db
       .selectFrom('project_files')
-      .select(['path', 'kind', 'content_text', 'blob_key'])
+      .select(['id', 'path', 'kind', 'content_text', 'blob_key'])
       .where('project_id', '=', projectId)
       .where('deleted_at', 'is', null)
       .orderBy('path')
       .execute();
+    const texts = await this.collabText.liveTexts(
+      this.db,
+      rows.filter((r) => r.kind === 'text'),
+    );
     const zip = new ZipWriter();
     for (const r of rows) {
-      if (r.kind === 'text') zip.addBuffer(Buffer.from(r.content_text ?? '', 'utf8'), r.path);
+      if (r.kind === 'text') zip.addBuffer(Buffer.from(texts.get(r.id) ?? '', 'utf8'), r.path);
       else zip.addBuffer(await this.blobs.get(r.blob_key!), r.path, { compress: false });
     }
     zip.end();
@@ -286,11 +313,17 @@ export class FilesService {
         'Binary files have no text content.',
         HttpStatus.BAD_REQUEST,
       );
-    return { ...toFile(row), content: row.content_text ?? '' };
+    const content = await this.collabText.liveText(this.db, row);
+    return {
+      ...toFile(row),
+      sha256: sha256Hex(content),
+      sizeBytes: Buffer.byteLength(content, 'utf8'),
+      content,
+    };
   }
 
   async create(userId: string, projectId: string, req: CreateFileRequest): Promise<ProjectFile> {
-    return this.db.transaction().execute(async (trx) => {
+    const file = await this.db.transaction().execute(async (trx) => {
       await this.access.lockForAction(trx, userId, projectId, 'files:write', 'share');
       const { count } = await trx
         .selectFrom('project_files')
@@ -328,12 +361,16 @@ export class FilesService {
         throw err;
       }
     });
+    await this.events.publish({ type: 'files-changed', projectId });
+    return file;
   }
 
   /**
-   * Compare-and-swap save: succeeds only if the stored hash still equals
+   * Compare-and-swap save: succeeds only if the current text still hashes to
    * `expectedSha256` (the client's If-Match). Never silently overwrites a
-   * newer version written by another tab or user.
+   * newer version written by another tab or user. For a file being edited
+   * collaboratively the save becomes a minimal Yjs edit, merged with live
+   * collaborators' changes.
    */
   async save(
     userId: string,
@@ -349,17 +386,35 @@ export class FilesService {
         HttpStatus.PRECONDITION_REQUIRED,
       );
     }
-    return this.db.transaction().execute(async (trx) => {
+    if (!isUuid(fileId)) throw notFound('File');
+    const result = await this.db.transaction().execute(async (trx) => {
       await this.access.lockForAction(trx, userId, projectId, 'files:write', 'share');
-      const current = await this.liveFile(trx, projectId, fileId);
+      const current = await trx
+        .selectFrom('project_files')
+        .select([...FILE_COLUMNS, 'content_text'])
+        .where('id', '=', fileId)
+        .where('project_id', '=', projectId)
+        .where('deleted_at', 'is', null)
+        .forNoKeyUpdate()
+        .executeTakeFirst();
+      if (!current) throw notFound('File');
       if (current.kind !== 'text')
         throw new ApiException(
           'BAD_REQUEST',
           'Binary files cannot be edited as text.',
           HttpStatus.BAD_REQUEST,
         );
+      const currentSha = sha256Hex(await this.collabText.liveText(trx, current));
       const newHash = sha256Hex(content);
-      if (current.sha256 === newHash) return toFile(current); // idempotent retry
+      if (currentSha === newHash) return { file: { ...toFile(current), sha256: newHash } };
+      if (currentSha !== expectedSha256) {
+        throw new ApiException(
+          'PRECONDITION_FAILED',
+          'This file was changed somewhere else since you opened it.',
+          HttpStatus.PRECONDITION_FAILED,
+        );
+      }
+      const viaCollab = await this.collabText.applyExternalEdit(trx, fileId, content, userId);
       const row = await trx
         .updateTable('project_files')
         .set({
@@ -370,23 +425,17 @@ export class FilesService {
           updated_at: sql`now()`,
         })
         .where('id', '=', fileId)
-        .where('sha256', '=', expectedSha256)
         .returning(FILE_COLUMNS)
-        .executeTakeFirst();
-      if (!row) {
-        throw new ApiException(
-          'PRECONDITION_FAILED',
-          'This file was changed somewhere else since you opened it.',
-          HttpStatus.PRECONDITION_FAILED,
-        );
-      }
+        .executeTakeFirstOrThrow();
       await trx
         .updateTable('projects')
         .set({ updated_at: sql`now()` })
         .where('id', '=', projectId)
         .execute();
-      return toFile(row);
+      return { file: toFile(row), viaCollab };
     });
+    if (result.viaCollab) await this.events.publish({ type: 'file-updated', projectId, fileId });
+    return result.file;
   }
 
   async rename(
@@ -395,7 +444,7 @@ export class FilesService {
     fileId: string,
     newPath: string,
   ): Promise<ProjectFile> {
-    return this.db.transaction().execute(async (trx) => {
+    const renamed = await this.db.transaction().execute(async (trx) => {
       await this.access.lockForAction(trx, userId, projectId, 'files:write', 'update');
       const current = await this.liveFile(trx, projectId, fileId);
       if (current.path === newPath) return toFile(current);
@@ -448,6 +497,8 @@ export class FilesService {
         throw err;
       }
     });
+    await this.events.publish({ type: 'files-changed', projectId });
+    return renamed;
   }
 
   async remove(userId: string, projectId: string, fileId: string): Promise<void> {
@@ -474,6 +525,7 @@ export class FilesService {
         metadata: { path: current.path },
       });
     });
+    await this.events.publish({ type: 'file-deleted', projectId, fileId });
   }
 
   private async liveFile(

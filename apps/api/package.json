@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",
+    "@latex-cloud/collab-protocol": "workspace:*",
     "@latex-cloud/compiler-protocol": "workspace:*",
     "@latex-cloud/shared": "workspace:*",
     "@nestjs/common": "11.2.8",
@@ -36,6 +37,7 @@
     "zod": "3.25.76"
   },
   "devDependencies": {
+    "@hocuspocus/provider": "4.7.1",
     "@nestjs/testing": "11.2.8",
     "@swc/core": "1.16.21",
     "@types/cookie-parser": "1.4.10",
@@ -47,6 +49,7 @@
     "@types/yazl": "3.3.1",
     "supertest": "7.3.1",
     "unplugin-swc": "1.6.0",
-    "vitest": "3.2.4"
+    "vitest": "3.2.4",
+    "yjs": "13.6.33"
   }
 }

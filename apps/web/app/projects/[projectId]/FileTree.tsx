@@ -58,6 +58,7 @@ export function FileTree({
   rootFile,
   selectedId,
   canWrite,
+  editors,
   onOpen,
   onCreate,
   onRename,
@@ -70,6 +71,8 @@ export function FileTree({
   rootFile: string | null;
   selectedId: string | null;
   canWrite: boolean;
+  /** Colours of collaborators who have each file open. */
+  editors?: Map<string, string[]>;
   onOpen: (f: ProjectFile) => void;
   onCreate: (path: string) => Promise<void>;
   onRename: (f: ProjectFile, path: string) => Promise<void>;
@@ -173,6 +176,20 @@ export function FileTree({
                 {fileIcon(f)}
               </span>
               <span className="tree__name">{name}</span>
+              {editors?.get(f.id)?.length ? (
+                <span
+                  className="tree__editors"
+                  aria-label={`${editors.get(f.id)!.length} collaborator(s) editing`}
+                  data-testid="tree-editors"
+                >
+                  {editors
+                    .get(f.id)!
+                    .slice(0, 3)
+                    .map((c, i) => (
+                      <span key={i} className="tree__editor-dot" style={{ background: c }} />
+                    ))}
+                </span>
+              ) : null}
               {isRoot ? (
                 <Badge tone="accent" dot={false} title="Main file (compiled)">
                   main

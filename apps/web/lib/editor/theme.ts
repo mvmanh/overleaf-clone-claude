@@ -81,3 +81,27 @@ export const highlightStyle = HighlightStyle.define([
 ]);
 
 export const syntaxTheme = syntaxHighlighting(highlightStyle);
+
+/**
+ * Collaborators' cursors (y-codemirror.next): a thin caret with a name flag
+ * that stays readable instead of appearing only on hover.
+ */
+export const collabCursorTheme = EditorView.theme({
+  '.cm-ySelectionCaret': { position: 'relative', margin: '0 -1px', borderLeft: '2px solid' },
+  '.cm-ySelectionCaretDot': { display: 'none' },
+  '.cm-ySelectionInfo': {
+    top: '-1.4em',
+    left: '-2px',
+    padding: '1px 5px',
+    borderRadius: '3px 3px 3px 0',
+    color: '#fff',
+    fontFamily: 'var(--lc-font-sans)',
+    fontSize: '10.5px',
+    fontWeight: '600',
+    lineHeight: '1.3',
+    opacity: '0.92',
+    pointerEvents: 'none',
+    userSelect: 'none',
+  },
+  '.cm-ySelectionCaret:hover > .cm-ySelectionInfo': { opacity: '0.3' },
+});

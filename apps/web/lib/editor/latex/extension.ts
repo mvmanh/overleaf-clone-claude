@@ -41,13 +41,18 @@ export interface LatexExtensionDeps {
   settings: () => EditorSettings;
 }
 
-/** Editor chrome shared by every file type (a trimmed, configurable basicSetup). */
-export function baseSetup(settings: EditorSettings): Extension {
+/**
+ * Editor chrome shared by every file type (a trimmed, configurable basicSetup).
+ * Collaborative documents pass `history: false`: their undo is Yjs' (it only
+ * undoes your own changes, never a collaborator's).
+ */
+export function baseSetup(settings: EditorSettings, opts: { history?: boolean } = {}): Extension {
+  const withHistory = opts.history ?? true;
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
     highlightSpecialChars(),
-    history(),
+    withHistory ? history() : [],
     foldGutter(),
     drawSelection(),
     dropCursor(),
@@ -65,7 +70,7 @@ export function baseSetup(settings: EditorSettings): Extension {
       ...closeBracketsKeymap,
       ...defaultKeymap,
       ...searchKeymap,
-      ...historyKeymap,
+      ...(withHistory ? historyKeymap : []),
       ...foldKeymap,
       ...completionKeymap,
       ...lintKeymap,

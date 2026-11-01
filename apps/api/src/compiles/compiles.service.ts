@@ -16,6 +16,7 @@ import {
   type RevisionManifest,
   sha256Hex,
 } from '@latex-cloud/compiler-protocol';
+import { CollabTextService } from '../collab/collab-text.service';
 import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
@@ -40,6 +41,7 @@ export class CompilesService {
     @Inject(BLOB_STORAGE) private readonly blobs: BlobStorage,
     @Inject(COMPILE_QUEUE) private readonly queue: CompileQueue,
     private readonly access: ProjectAccessService,
+    private readonly collabText: CollabTextService,
   ) {}
 
   /** The TeX image the running workers use; part of every fingerprint. */
@@ -72,7 +74,10 @@ export class CompilesService {
     const worker = await this.workerInfo();
 
     // REPEATABLE READ: every file is read from the same snapshot, so a
-    // revision can never mix versions from concurrent saves.
+    // revision can never mix versions from concurrent saves. Collaborative
+    // edits are committed before they are acknowledged, and replayed here
+    // from the same snapshot, so this is also the cross-file barrier: the
+    // revision holds every edit acknowledged before the request (ADR-0014).
     const captured = await this.db
       .transaction()
       .setIsolationLevel('repeatable read')
@@ -86,12 +91,16 @@ export class CompilesService {
         if (!project) throw notFound('Project');
         const files = await trx
           .selectFrom('project_files')
-          .select(['path', 'kind', 'content_text', 'blob_key', 'sha256'])
+          .select(['id', 'path', 'kind', 'content_text', 'blob_key', 'sha256'])
           .where('project_id', '=', projectId)
           .where('deleted_at', 'is', null)
           .orderBy('path')
           .execute();
-        return { project, files };
+        const texts = await this.collabText.liveTexts(
+          trx,
+          files.filter((f) => f.kind === 'text'),
+        );
+        return { project, files, texts };
       });
 
     const root = captured.project.root_file_path;
@@ -108,7 +117,7 @@ export class CompilesService {
     const snapshotFiles = await Promise.all(
       captured.files.map(async (f) => {
         if (f.kind === 'text')
-          return { path: f.path, content: Buffer.from(f.content_text ?? '', 'utf8') };
+          return { path: f.path, content: Buffer.from(captured.texts.get(f.id) ?? '', 'utf8') };
         const content = await this.blobs.get(f.blob_key!);
         if (sha256Hex(content) !== f.sha256) {
           throw new ApiException(

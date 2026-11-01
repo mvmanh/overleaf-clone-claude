@@ -3,7 +3,7 @@ import { createProject, newSession, serverContent } from './helpers';
 
 const stamp = () => Date.now().toString(36);
 
-test('write LaTeX with autosave; reload keeps it', async ({ browser }) => {
+test('write LaTeX: every edit is saved; reload keeps it', async ({ browser }) => {
   const alice = await newSession(browser, 'alice@example.com');
   const id = await createProject(alice, `E2E Editor ${stamp()}`, 'math');
   await expect(alice.locator('.cm-line').first()).toContainText('\\documentclass[11pt]{article}');
@@ -11,15 +11,20 @@ test('write LaTeX with autosave; reload keeps it', async ({ browser }) => {
   await alice.locator('.cm-content').click();
   await alice.keyboard.press('Control+End');
   await alice.keyboard.type('\n% autosaved line');
-  await expect(alice.getByTestId('save-status')).toHaveText('Unsaved changes');
+  // Real-time editing: "Saved" means the server has committed the edit.
   await expect(alice.getByTestId('save-status')).toHaveText('Saved', { timeout: 10_000 });
   expect(await serverContent(alice, id, 'main.tex')).toContain('% autosaved line');
 
-  // Ctrl+S saves immediately.
+  // Ctrl+S is harmless (nothing is ever waiting to be saved for long).
   await alice.keyboard.type('\n% saved with ctrl-s');
   await alice.keyboard.press('Control+s');
-  await expect(alice.getByTestId('save-status')).toHaveText('Saved');
+  await expect(alice.getByTestId('save-status')).toHaveText('Saved', { timeout: 10_000 });
   expect(await serverContent(alice, id, 'main.tex')).toContain('% saved with ctrl-s');
+
+  await alice.reload();
+  await alice.locator('.cm-content').click();
+  await alice.keyboard.press('Control+End');
+  await expect(alice.locator('.cm-content')).toContainText('% saved with ctrl-s');
 });
 
 test('file tree: create in a folder, rename, set as main, delete', async ({ browser }) => {
@@ -91,28 +96,29 @@ test('viewers get a read-only editor', async ({ browser }) => {
   await expect(bob.getByRole('button', { name: 'New file' })).toHaveCount(0);
 });
 
-test('concurrent edits in two tabs surface a conflict instead of overwriting', async ({
+test('two tabs of the same author merge their edits instead of conflicting', async ({
   browser,
 }) => {
   const tab1 = await newSession(browser, 'alice@example.com');
-  const id = await createProject(tab1, `E2E Conflict ${stamp()}`, 'blank');
+  const id = await createProject(tab1, `E2E Two tabs ${stamp()}`, 'blank');
   const tab2 = await newSession(browser, 'alice@example.com');
   await tab2.goto(`/projects/${id}`);
   await expect(tab2.locator('.cm-content')).toBeVisible();
 
   await tab1.locator('.cm-content').click();
-  await tab1.keyboard.type('% from tab 1');
-  await tab1.keyboard.press('Control+s');
-  await expect(tab1.getByTestId('save-status')).toHaveText('Saved');
-
+  await tab1.keyboard.press('Control+End');
+  await tab1.keyboard.type('\n% from tab 1');
   await tab2.locator('.cm-content').click();
-  await tab2.keyboard.type('% from tab 2');
-  await tab2.keyboard.press('Control+s');
-  await expect(tab2.getByTestId('save-status')).toHaveText('Conflict');
-  await expect(tab2.getByRole('alert').filter({ hasText: 'changed elsewhere' })).toBeVisible();
-  expect(await serverContent(tab2, id, 'main.tex')).toContain('% from tab 1');
+  await tab2.keyboard.press('Control+Home');
+  await tab2.keyboard.type('% from tab 2\n');
 
-  await tab2.getByRole('button', { name: 'Keep my version' }).click();
-  await expect(tab2.getByTestId('save-status')).toHaveText('Saved');
-  expect(await serverContent(tab2, id, 'main.tex')).toContain('% from tab 2');
+  for (const tab of [tab1, tab2]) {
+    await expect(tab.getByTestId('save-status')).toHaveText('Saved', { timeout: 10_000 });
+    await expect(tab.locator('.cm-content')).toContainText('% from tab 1');
+    await expect(tab.locator('.cm-content')).toContainText('% from tab 2');
+  }
+  const stored = await serverContent(tab2, id, 'main.tex');
+  expect(stored).toContain('% from tab 1');
+  expect(stored).toContain('% from tab 2');
+  await expect(tab2.getByRole('alert').filter({ hasText: 'changed elsewhere' })).toHaveCount(0);
 });

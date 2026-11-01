@@ -1,0 +1,24 @@
+{
+  "name": "@latex-cloud/collab-protocol",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Server-side collaboration contract: WebSocket tokens, API→collab events and Yjs text helpers (shared by api and collab)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@latex-cloud/shared": "workspace:*",
+    "yjs": "13.6.33",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

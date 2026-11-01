@@ -5,6 +5,7 @@ import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import {
   can,
+  type CollabNotice,
   ProjectFile,
   ProjectFileListResponse,
   ProjectSummary,
@@ -23,6 +24,12 @@ import {
 } from '@latex-cloud/ui';
 import { useSession } from '../../../components/useSession';
 import { ApiError, apiFetch } from '../../../lib/api';
+import {
+  useCollabNotices,
+  useCollabSession,
+  useConnection,
+  usePeers,
+} from '../../../lib/collab/use-collab';
 import type { SaveStatus } from '../../../lib/editor/file-session';
 import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
@@ -35,6 +42,7 @@ import { SymbolPalette } from './SymbolPalette';
 import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
 import { PdfViewer } from './PdfViewer';
+import { Presence } from './Presence';
 import { ProblemsPanel } from './ProblemsPanel';
 import { ShareDialog } from './ShareDialog';
 import { SourceEditor, type SourceEditorHandle } from './SourceEditor';
@@ -59,6 +67,7 @@ const SAVE_LABEL: Record<SaveStatus['kind'], [string, Tone]> = {
   saved: ['Saved', 'success'],
   dirty: ['Unsaved changes', 'warning'],
   saving: ['Saving…', 'info'],
+  offline: ['Offline · edits kept', 'warning'],
   conflict: ['Conflict', 'danger'],
   error: ['Not saved', 'danger'],
 };
@@ -97,6 +106,19 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const [reloadNonce, setReloadNonce] = useState(0);
   /** Saves since the PDF on screen was built: the PDF may be out of date. */
   const [editedSinceCompile, setEditedSinceCompile] = useState(false);
+  /** The open file, if it was deleted (by someone else) while open: its text is kept. */
+  const [deletedOpen, setDeletedOpen] = useState<ProjectFileT | null>(null);
+  const selectedRef = useRef<{ id: string | null; files: ProjectFileT[] | null }>({
+    id: null,
+    files: null,
+  });
+  /** A delete this tab started: no "deleted elsewhere" banner for it. */
+  const selfDeleting = useRef<string | null>(null);
+
+  const collabState = useCollabSession(projectId, true);
+  const collab = collabState.kind === 'ready' ? collabState.session : null;
+  const peers = usePeers(collab);
+  const connection = useConnection(collab);
 
   const flushEditor = useCallback(async () => {
     await source.current?.flush();
@@ -128,6 +150,16 @@ export function EditorShell({ projectId }: { projectId: string }) {
         `/api/v1/projects/${encodeURIComponent(projectId)}/files`,
         ProjectFileListResponse,
       );
+      // The open file vanished (deleted by a collaborator): keep showing it.
+      const { id, files: before } = selectedRef.current;
+      const open = before?.find((f) => f.id === id);
+      if (
+        open &&
+        open.kind === 'text' &&
+        !r.files.some((f) => f.id === open.id) &&
+        selfDeleting.current !== open.id
+      )
+        setDeletedOpen(open);
       setFiles(r.files);
       setFilesError(null);
       return r;
@@ -140,6 +172,19 @@ export function EditorShell({ projectId }: { projectId: string }) {
   }, [projectId]);
 
   useEffect(reloadProject, [reloadProject]);
+  useEffect(() => {
+    selectedRef.current = { id: selectedId, files };
+  }, [selectedId, files]);
+
+  // Live project changes pushed by the collab server.
+  const onNotice = useCallback(
+    (n: CollabNotice) => {
+      if (n.type === 'files-changed') void reloadFiles();
+      else if (n.type === 'project-changed' || n.type === 'role-changed') reloadProject();
+    },
+    [reloadFiles, reloadProject],
+  );
+  useCollabNotices(collab, onNotice);
 
   // Initial file selection: last opened (this browser), else the main file.
   useEffect(() => {
@@ -163,6 +208,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const openFile = useCallback(
     (f: ProjectFileT) => {
       setSelectedId(f.id);
+      setDeletedOpen(null);
       try {
         localStorage.setItem(lastOpenedKey(projectId), f.id);
       } catch {
@@ -243,7 +289,12 @@ export function EditorShell({ projectId }: { projectId: string }) {
 
   const { project } = state;
   const canWrite = can(project.role, 'files:write');
-  const selected = files?.find((f) => f.id === selectedId) ?? null;
+  const selected =
+    files?.find((f) => f.id === selectedId) ??
+    (deletedOpen && deletedOpen.id === selectedId ? deletedOpen : null);
+  const editingHere = new Map<string, string[]>();
+  for (const p of peers)
+    for (const id of p.fileIds) editingHere.set(id, [...(editingHere.get(id) ?? []), p.user.color]);
   const base = `/api/v1/projects/${project.id}`;
 
   const panel = (id: PanelId, title: ReactNode, children: ReactNode, extra?: ReactNode) => (
@@ -282,6 +333,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
         rootFile={project.rootFile}
         selectedId={selectedId}
         canWrite={canWrite}
+        editors={editingHere}
         onOpen={openFile}
         onCreate={async (path) => {
           const f = await apiFetch(`${base}/files`, ProjectFile, {
@@ -301,6 +353,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
           reloadProject(); // root path may have moved
         }}
         onDelete={async (f) => {
+          selfDeleting.current = f.id;
           await apiFetch(`${base}/files/${f.id}`, null, { method: 'DELETE' });
           const r = await reloadFiles();
           if (f.id === selectedId)
@@ -319,7 +372,8 @@ export function EditorShell({ projectId }: { projectId: string }) {
               body: form,
             });
             await reloadFiles();
-            if (r.replaced && r.file.id === selectedId) setReloadNonce((n) => n + 1);
+            // Collaborative documents receive the new text live; autosave reloads.
+            if (r.replaced && r.file.id === selectedId && !collab) setReloadNonce((n) => n + 1);
             if (!r.replaced) openFile(r.file);
             return 'ok';
           } catch (e) {
@@ -343,6 +397,10 @@ export function EditorShell({ projectId }: { projectId: string }) {
     selected ? <span className="panel__path">{selected.path}</span> : 'Source',
     selected && selected.kind === 'binary' ? (
       <AssetPreview key={selected.id + selected.sha256} projectId={project.id} file={selected} />
+    ) : selected && collabState.kind === 'pending' ? (
+      <div className="editor__center">
+        <Spinner label="Connecting" />
+      </div>
     ) : selected ? (
       <div className="source-wrap">
         <SourceEditor
@@ -356,9 +414,25 @@ export function EditorShell({ projectId }: { projectId: string }) {
             setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs);
             setEditedSinceCompile(true);
           }}
+          onEdited={() => setEditedSinceCompile(true)}
           onCompile={compileNow}
           jumpTo={jumpTo}
           index={index}
+          collab={collab}
+          deleted={deletedOpen?.id === selected.id}
+          onRecover={
+            canWrite
+              ? async (content) => {
+                  const path = recoveredPath(selected.path, files ?? []);
+                  const f = await apiFetch(`${base}/files`, ProjectFile, {
+                    method: 'POST',
+                    body: JSON.stringify({ path, content }),
+                  });
+                  await reloadFiles();
+                  openFile(f);
+                }
+              : undefined
+          }
         />
         {paletteOpen && canWrite ? (
           <SymbolPalette
@@ -512,6 +586,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
           {project.role}
         </Badge>
         <span className="editor__spacer" />
+        <Presence peers={peers} files={files} connection={connection} onOpenFile={openFile} />
         {saveStatus && selected ? (
           <span data-testid="save-status" aria-live="polite">
             <Badge
@@ -613,4 +688,16 @@ export function EditorShell({ projectId }: { projectId: string }) {
       <EditorSettingsDialog open={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </main>
   );
+}
+
+/** `chapter.tex` → `chapter-recovered.tex` (or `-recovered-2`, … if taken). */
+export function recoveredPath(path: string, files: ProjectFileT[]): string {
+  const dot = path.lastIndexOf('.');
+  const stem = dot > path.lastIndexOf('/') ? path.slice(0, dot) : path;
+  const ext = dot > path.lastIndexOf('/') ? path.slice(dot) : '';
+  const taken = new Set(files.map((f) => f.path.toLowerCase()));
+  for (let i = 1; ; i++) {
+    const candidate = `${stem}-recovered${i === 1 ? '' : `-${i}`}${ext}`;
+    if (!taken.has(candidate.toLowerCase())) return candidate;
+  }
 }

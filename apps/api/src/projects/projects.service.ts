@@ -17,6 +17,7 @@ import type {
   UpdateProjectRequest,
 } from '@latex-cloud/shared';
 import { ApiException, notFound } from '../common/api-exception';
+import { CollabEvents } from '../collab/collab-events';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
 import { randomUUID } from 'node:crypto';
@@ -37,6 +38,7 @@ export class ProjectsService {
     @Inject(DB) private readonly db: Kysely<Database>,
     private readonly access: ProjectAccessService,
     @Inject(BLOB_STORAGE) private readonly blobs: BlobStorage,
+    private readonly events: CollabEvents,
   ) {}
 
   /**
@@ -308,6 +310,7 @@ export class ProjectsService {
         metadata: changes,
       });
     });
+    await this.events.publish({ type: 'project-changed', projectId });
     return this.getForUser(userId, projectId);
   }
 
@@ -322,6 +325,7 @@ export class ProjectsService {
         .execute();
       await recordAudit(trx, { projectId, actorId: userId, action: 'project.deleted' });
     });
+    await this.events.publish({ type: 'project-deleted', projectId });
   }
 
   async listMembers(userId: string, projectId: string): Promise<ProjectMember[]> {
@@ -411,6 +415,7 @@ export class ProjectsService {
         metadata: { userId: targetId, from: target.role, to: role },
       });
     });
+    await this.events.publish({ type: 'members-changed', projectId });
     return this.listMembers(userId, projectId);
   }
 
@@ -444,6 +449,7 @@ export class ProjectsService {
         metadata: { userId: targetId, role: target.role },
       });
     });
+    await this.events.publish({ type: 'members-changed', projectId });
   }
 
   /** Old owner becomes editor; target (an existing member) becomes owner. */
@@ -481,6 +487,7 @@ export class ProjectsService {
         metadata: { from: userId, to: targetId, previousRoleOfNewOwner: target.role },
       });
     });
+    await this.events.publish({ type: 'members-changed', projectId });
     return this.getForUser(userId, projectId);
   }
 

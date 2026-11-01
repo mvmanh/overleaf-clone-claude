@@ -853,3 +853,59 @@
   border-radius: var(--lc-radius-sm);
   background: var(--lc-surface-sunken);
 }
+
+/* ── Real-time collaboration ────────────────────────────────────────── */
+.presence {
+  display: flex;
+  align-items: center;
+}
+.presence__avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-left: -6px;
+  padding: 0;
+  border: 2px solid var(--lc-surface);
+  border-radius: 50%;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition:
+    transform var(--lc-transition),
+    box-shadow var(--lc-transition);
+}
+.presence__avatar:first-of-type {
+  margin-left: 0;
+}
+.presence__avatar:hover:not(:disabled),
+.presence__avatar:focus-visible {
+  z-index: 1;
+  transform: translateY(-1px);
+  box-shadow: var(--lc-shadow-md);
+}
+.presence__avatar:disabled {
+  cursor: default;
+}
+.presence__avatar--more {
+  background: var(--lc-surface-sunken);
+  color: var(--lc-text-muted);
+  cursor: default;
+}
+.presence__offline {
+  margin-right: var(--lc-space-2);
+  color: var(--lc-warning);
+  font-size: var(--lc-text-xs);
+}
+.tree__editors {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+.tree__editor-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
