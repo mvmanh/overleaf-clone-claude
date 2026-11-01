@@ -24,6 +24,7 @@ describe('buildDockerRunArgs', () => {
     '--user=10001:10001',
     '--ipc=none',
     '--rm',
+    '--pull=never',
     '--log-driver=none',
   ])('includes %s', (flag) => {
     expect(args).toContain(flag);

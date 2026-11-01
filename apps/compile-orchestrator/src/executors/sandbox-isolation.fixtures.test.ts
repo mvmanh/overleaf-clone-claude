@@ -3,7 +3,7 @@ import { DEFAULT_SANDBOX_LIMITS } from '@latex-cloud/compiler-protocol';
 import { describe, expect, it } from 'vitest';
 import { loadOrchestratorEnv } from '../config';
 import { buildDockerRunArgs } from './docker';
-import { resolveImageDigest } from './factory';
+import { resolveImage } from './factory';
 
 /*
  * Probes the running sandbox with the exact production `docker run` flags
@@ -16,7 +16,7 @@ const enabled = env.COMPILE_EXECUTOR === 'docker';
 function probe(script: string): { status: number | null; stdout: string; stderr: string } {
   const args = buildDockerRunArgs({
     name: `lc-probe-${process.pid}-${Math.random().toString(36).slice(2)}`,
-    image: resolveImageDigest(env.TEX_IMAGE),
+    image: resolveImage(env.TEX_IMAGE).runRef,
     runtime: env.DOCKER_RUNTIME,
     limits: { ...DEFAULT_SANDBOX_LIMITS, pids: 64 },
     rootFile: '-c',

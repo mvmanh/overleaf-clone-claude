@@ -49,6 +49,17 @@ Health: <http://localhost:3000/api/v1/health/ready>. Stop with `pnpm stack:down`
 > Behind a TLS-intercepting proxy, build with
 > `--secret id=extra_ca,src=/path/to/ca.pem`.
 
+### Troubleshooting compiles
+
+- **"The compile service is not running"**: the `compile-worker` container (or
+  `pnpm dev:worker`) is not up — check `docker compose -f infra/compose/docker-compose.yml --env-file .env logs compile-worker`.
+- **"TeX image … not found locally"**: build it with `pnpm tex-image:build`
+  (compose builds it through the `texlive` service). The worker never pulls
+  images from a registry.
+- After updating the code, rebuild and restart: `pnpm stack:up` (it runs
+  `--build`). Previously failed compiles of unchanged content are retried
+  automatically when the failure was a sandbox error.
+
 ## Hot-reload development
 
 ```bash

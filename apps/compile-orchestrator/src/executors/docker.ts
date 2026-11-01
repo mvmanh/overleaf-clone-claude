@@ -24,8 +24,10 @@ export const SANDBOX_OUT = '/work/out';
 export const SANDBOX_RC = '/etc/latex-cloud/latexmkrc';
 
 export interface DockerExecutorOptions {
-  /** Image reference; prefer a content digest (`repo@sha256:...`). */
+  /** Local image reference to run, ideally the image ID (`sha256:…`). Never pulled. */
   image: string;
+  /** Identity recorded in manifests (defaults to `image`). */
+  texImageLabel?: string;
   /** `runsc` selects gVisor. Anything else is plain container isolation. */
   runtime?: 'runc' | 'runsc' | undefined;
   dockerBin?: string;
@@ -51,6 +53,8 @@ export function buildDockerRunArgs(opts: {
     'run',
     '--rm',
     '-i',
+    // Only ever run the locally built, pinned image; never reach a registry.
+    '--pull=never',
     `--name=${opts.name}`,
     '--network=none',
     '--read-only',
@@ -96,7 +100,7 @@ export class DockerExecutor implements SandboxExecutor {
       kind: options.runtime === 'runsc' ? 'docker+runsc' : 'docker',
       isolation: options.runtime === 'runsc' ? 'gvisor' : 'container',
       trustedInputOnly: false,
-      texImage: options.image,
+      texImage: options.texImageLabel ?? options.image,
     };
   }
 
