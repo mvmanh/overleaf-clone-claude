@@ -1,0 +1,15 @@
+import type { Metadata } from 'next';
+import { Suspense } from 'react';
+import { LoginForm } from './LoginForm';
+
+export const metadata: Metadata = { title: 'Sign in' };
+
+export default function LoginPage() {
+  return (
+    <main id="main" className="login">
+      <Suspense>
+        <LoginForm />
+      </Suspense>
+    </main>
+  );
+}

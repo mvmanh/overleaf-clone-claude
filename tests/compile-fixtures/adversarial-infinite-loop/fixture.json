@@ -1,0 +1,6 @@
+{
+  "description": "A non-terminating document must hit the wall-clock limit and be killed",
+  "engine": "pdflatex",
+  "limits": { "wallTimeMs": 5000 },
+  "expect": { "outcome": "timeout" }
+}

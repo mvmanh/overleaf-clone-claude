@@ -1,0 +1,22 @@
+{
+  "name": "@latex-cloud/shared",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API contracts (Zod schemas, DTOs, error shape) shared by web, api and workers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "vitest": "3.2.4"
+  }
+}

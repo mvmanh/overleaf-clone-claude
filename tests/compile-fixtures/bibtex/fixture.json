@@ -1,0 +1,5 @@
+{
+  "description": "Classic BibTeX with natbib in a subdirectory bib file",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

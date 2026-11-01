@@ -1,0 +1,42 @@
+#!/bin/sh
+# Entry point of the compile sandbox image.
+#   stdin : tar of the project snapshot (regular files only)
+#   argv  : <root-file> <latexmk args...>
+#   stdout: tar of artifacts + exit-status + timings (nothing else!)
+# Runs as an unprivileged user with a read-only root fs; /work and /tmp are tmpfs.
+set -eu
+umask 077
+
+ROOT="$1"
+shift
+
+SRC=/work/src
+OUT=/work/out
+mkdir -p "$SRC" "$OUT"
+export HOME=/tmp/home TEXMFVAR=/tmp/texmf-var TEXMFOUTPUT="$OUT"
+mkdir -p "$HOME" "$TEXMFVAR"
+
+# Extract input. Refuse absolute names and links; drop anything that is not a
+# regular file or directory as a second line of defence.
+tar -x -C "$SRC" --no-same-owner --no-same-permissions --no-overwrite-dir -f - 1>&2
+find "$SRC" \( -type l -o -type b -o -type c -o -type p -o -type s \) -delete 1>&2
+
+cd "$SRC"
+START=$(date +%s%3N)
+set +e
+latexmk "$@" >"$OUT/latexmk.stdout" 2>&1
+STATUS=$?
+set -e
+END=$(date +%s%3N)
+
+cd "$OUT"
+BASE=$(basename "$ROOT")
+BASE=${BASE%.tex}
+BASE=${BASE%.ltx}
+printf '%s\n' "$STATUS" > exit-status
+printf '%s %s\n' "$START" "$END" > timings
+set -- exit-status timings latexmk.stdout
+for f in "$BASE.pdf" "$BASE.log" "$BASE.synctex.gz"; do
+  [ -f "$f" ] && set -- "$@" "$f"
+done
+exec tar -c -f - "$@"

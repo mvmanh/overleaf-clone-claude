@@ -1,0 +1,8 @@
+{
+  "description": "CS paper bits: algorithmicx pseudocode, listings, hyperref, cleveref",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "succeeded",
+    "minPages": 1
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "description": "Writing outside the build directory must be refused",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "compile-error",
+    "diagnostics": [
+      {
+        "file": "main.tex",
+        "line": 4,
+        "code": "write-denied"
+      }
+    ]
+  }
+}

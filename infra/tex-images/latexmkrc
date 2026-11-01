@@ -1,0 +1,29 @@
+# latex-cloud platform latexmkrc — the ONLY rc file latexmk reads.
+# latexmk is always invoked with `-norc -r <this file>`, so project-supplied
+# latexmkrc files (which are Perl code) are never executed. Keep this file
+# free of anything a document could influence.
+
+# Run bibtex/biber whenever a .bib is in play, and rerun TeX as needed.
+$bibtex_use = 2;
+$max_repeat = 6;
+
+# Never open viewers, never watch for changes, never print.
+$preview_mode = 0;
+$preview_continuous_mode = 0;
+$view = 'none';
+$printout_mode = 0;
+
+# No custom dependency rules (they execute programs).
+@cus_dep_list = ();
+
+# Do not let documents trigger makeglossaries/etc. via custom rules. Engines
+# are invoked with explicit safe flags; latexmk appends %O options it controls.
+$pdflatex = 'pdflatex -no-shell-escape %O %S';
+$xelatex  = 'xelatex -no-shell-escape %O %S';
+$lualatex = 'lualatex -no-shell-escape %O %S';
+# No --quiet: latexmk parses biber's .blg to discover .bib dependencies.
+$biber    = 'biber %O %S';
+$bibtex   = 'bibtex %O %S';
+$makeindex = 'makeindex -r %O -o %D %S';
+
+$silent = 0;

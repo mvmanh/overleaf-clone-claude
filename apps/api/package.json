@@ -1,0 +1,45 @@
+{
+  "name": "@latex-cloud/api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "NestJS modular-monolith API. Never runs TeX; never receives the Docker socket.",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json && (tsc -p tsconfig.build.json --watch --preserveWatchOutput & node --watch --env-file-if-exists=../../.env --enable-source-maps dist/main.js)",
+    "start": "node --enable-source-maps dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "db:migrate": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/database/migrate.js",
+    "db:migrate:prod": "node dist/database/migrate.js",
+    "db:seed": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/database/seed.js",
+    "storage:init": "tsc -p tsconfig.build.json && node --env-file-if-exists=../../.env dist/storage/ensure-bucket.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "3.1161.0",
+    "@latex-cloud/shared": "workspace:*",
+    "@nestjs/common": "11.2.8",
+    "@nestjs/core": "11.2.8",
+    "@nestjs/platform-express": "11.2.8",
+    "@node-rs/argon2": "2.2.2",
+    "cookie-parser": "1.4.7",
+    "helmet": "8.3.0",
+    "ioredis": "5.11.1",
+    "kysely": "0.28.19",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.2.8",
+    "@swc/core": "1.16.21",
+    "@types/cookie-parser": "1.4.10",
+    "@types/express": "5.0.6",
+    "@types/pg": "8.23.1",
+    "@types/supertest": "6.0.3",
+    "supertest": "7.3.1",
+    "unplugin-swc": "1.6.0",
+    "vitest": "3.2.4"
+  }
+}

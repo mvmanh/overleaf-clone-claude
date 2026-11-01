@@ -1,0 +1,5 @@
+{
+  "description": "LuaLaTeX with fontspec, unicode-math and a Lua computation",
+  "engine": "lualatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

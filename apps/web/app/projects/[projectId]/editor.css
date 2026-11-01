@@ -1,0 +1,125 @@
+.editor {
+  display: grid;
+  height: 100vh;
+  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 48px minmax(0, 1fr) 180px;
+  grid-template-areas:
+    'top top top'
+    'tree source pdf'
+    'tree issues issues';
+  background: var(--lc-border);
+  gap: 1px;
+}
+.editor__top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: var(--lc-space-3);
+  padding: 0 var(--lc-space-4);
+  background: var(--lc-surface);
+}
+.editor__project-name {
+  margin: 0;
+  font-size: var(--lc-text-md);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.editor__spacer {
+  flex: 1;
+}
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--lc-surface);
+}
+.panel:focus-visible {
+  outline-offset: -2px;
+}
+.panel__header {
+  display: flex;
+  align-items: center;
+  gap: var(--lc-space-2);
+  height: 34px;
+  padding: 0 var(--lc-space-3);
+  border-bottom: 1px solid var(--lc-border);
+  font-size: var(--lc-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--lc-text-subtle);
+}
+.panel__body {
+  flex: 1;
+  overflow: auto;
+}
+.panel--tree {
+  grid-area: tree;
+}
+.panel--source {
+  grid-area: source;
+}
+.panel--source .panel__body {
+  background: var(--lc-surface-sunken);
+}
+.panel--pdf {
+  grid-area: pdf;
+}
+.panel--pdf .panel__body {
+  background: var(--lc-surface-sunken);
+}
+.panel--issues {
+  grid-area: issues;
+}
+.editor__center {
+  grid-column: 1 / -1;
+  grid-row: 2 / -1;
+  display: grid;
+  place-items: center;
+  background: var(--lc-surface);
+}
+.shortcuts {
+  border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-lg);
+  background: var(--lc-surface-raised);
+  color: var(--lc-text);
+  box-shadow: var(--lc-shadow-md);
+  padding: var(--lc-space-5);
+  min-width: 320px;
+}
+.shortcuts::backdrop {
+  background: rgb(0 0 0 / 0.35);
+}
+.shortcuts h2 {
+  margin: 0 0 var(--lc-space-3);
+  font-size: var(--lc-text-lg);
+}
+.shortcuts table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--lc-text-sm);
+}
+.shortcuts td {
+  padding: 6px 0;
+}
+.shortcuts td:last-child {
+  text-align: right;
+}
+
+/* Tablet / phone: read-first stacked layout. Full editing is desktop-optimised. */
+@media (max-width: 900px) {
+  .editor {
+    height: auto;
+    min-height: 100vh;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto 160px 50vh 50vh 160px;
+    grid-template-areas: 'top' 'tree' 'source' 'pdf' 'issues';
+  }
+  .editor__top {
+    flex-wrap: wrap;
+    padding: var(--lc-space-2) var(--lc-space-4);
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "description": "TikZ diagram and pgfplots plot",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

@@ -1,0 +1,8 @@
+\documentclass{article}
+\begin{document}
+\newwrite\out
+\immediate\openout\out=../../escaped-file.txt
+\immediate\write\out{owned}
+\immediate\closeout\out
+Hello.
+\end{document}

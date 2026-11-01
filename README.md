@@ -1,0 +1,157 @@
+# latex-cloud
+
+A private, self-hostable, multi-user LaTeX authoring platform for mathematics and
+computer science. Independent codebase (no Overleaf CE code — see
+[ADR-0001](docs/architecture/ADRs/0001-independent-product.md)).
+
+> **Status: Phase 0 / PR 1 — repository bootstrap.** Sign-in, a seeded project
+> dashboard, the editor layout skeleton, the compiler protocol, a hardened Docker
+> compile executor and a fixture suite are real and tested. Editing, compiling
+> from the UI, uploads and collaboration are **not implemented yet** and the UI
+> says so. **Trusted local use only** — see
+> [compile sandbox security](docs/security/compile-sandbox.md).
+
+Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
+[`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
+[PR 2 proposal](docs/product/pr-2-proposal.md)
+
+## Quick start (one command)
+
+Requirements: Docker with Compose v2.20+, Node 22, pnpm 10 (`corepack enable`).
+
+```bash
+cp .env.example .env
+```
+
+```bash
+pnpm stack:up
+```
+
+This builds and starts PostgreSQL, Redis, MinIO, a one-shot `migrate` job
+(migrations + dev seed + bucket), the API and the web app, and waits until all
+health checks pass. Then open <http://localhost:3000> and sign in:
+
+| User                | Password                   | Sees                       |
+| ------------------- | -------------------------- | -------------------------- |
+| `alice@example.com` | `latex-cloud-dev-password` | 2 projects (owner, viewer) |
+| `bob@example.com`   | `latex-cloud-dev-password` | 2 projects (owner, editor) |
+| `carol@example.com` | `latex-cloud-dev-password` | 1 project (owner)          |
+
+Health: <http://localhost:3000/api/v1/health/ready>. Stop with `pnpm stack:down`
+(add `-v` to the underlying compose command to drop volumes).
+
+> MinIO no longer publishes to Docker Hub; compose uses
+> `quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z`. Set `MINIO_IMAGE` in
+> `.env` to use another S3-compatible image. Behind a TLS-intercepting proxy,
+> build with `--secret id=extra_ca,src=/path/to/ca.pem`.
+
+## Hot-reload development
+
+```bash
+pnpm install
+```
+
+```bash
+pnpm infra:up      # postgres, redis, minio only
+```
+
+```bash
+pnpm dev:setup         # build shared packages, migrate, seed, create bucket
+```
+
+```bash
+pnpm dev           # api on :4000 (node --watch) + web on :3000 (next dev)
+```
+
+The API reads the repository-root `.env`. The browser only talks to the web
+origin; Next.js proxies `/api/*` to the API so the session cookie stays first-party.
+
+## Tests
+
+| Command                                                         | What it runs                                                                                   | Needs                                                                                                      |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `pnpm lint`                                                     | ESLint (flat config), zero warnings                                                            | —                                                                                                          |
+| `pnpm format:check`                                             | Prettier                                                                                       | —                                                                                                          |
+| `pnpm typecheck`                                                | `tsc --noEmit` in every workspace                                                              | —                                                                                                          |
+| `pnpm test`                                                     | Unit tests (Vitest) in every workspace                                                         | —                                                                                                          |
+| `pnpm test:integration`                                         | API against a fresh, migrated, seeded Postgres database per test file                          | Postgres (`TEST_DATABASE_ADMIN_URL`, default `postgres://latex_cloud:latex_cloud@localhost:5432/postgres`) |
+| `pnpm tex-image:build`                                          | Builds the TeX Live sandbox image                                                              | Docker                                                                                                     |
+| `pnpm fixtures:compile`                                         | Compiles every fixture, prints a timing table, writes PDFs to `tests/compile-fixtures/*/_out/` | TeX image (or the trusted local executor)                                                                  |
+| `pnpm --filter @latex-cloud/compile-orchestrator test:fixtures` | Fixture assertions + empirical sandbox isolation tests                                         | TeX image                                                                                                  |
+| `pnpm test:e2e`                                                 | Playwright against a running stack (`E2E_BASE_URL`, default `http://localhost:3000`)           | `pnpm stack:up`                                                                                            |
+
+Without Docker, fixtures can run against a host TeX Live install. This executor
+is **unsandboxed** and requires an explicit opt-in; it is refused in production:
+
+```bash
+COMPILE_EXECUTOR=local-trusted-dev ALLOW_TRUSTED_LOCAL_EXECUTOR=true pnpm fixtures:compile
+```
+
+## Repository layout
+
+```text
+apps/
+  web/                   Next.js 15 (App Router): sign-in, dashboard, editor shell
+  api/                   NestJS 11 modular monolith: auth, projects (read + ACL), health
+  compile-orchestrator/  SandboxExecutor implementations, snapshot/tar protocol, fixture runner
+packages/
+  shared/                Zod API contracts, error envelope, roles
+  compiler-protocol/     engines, latexmk args, path validation, revision manifest +
+                         fingerprint, job state machine, SandboxExecutor + security gate
+  tex-log-parser/        TeX log -> structured diagnostics (file, line, code, hint)
+  ui/                    design tokens (light/dark), components, theme toggle
+infra/
+  compose/               docker-compose.yml (trusted local stack)
+  tex-images/            pinned TeX Live sandbox image, platform latexmkrc, entrypoint
+tests/
+  compile-fixtures/      basic, math, tikz, cs, cs-algorithm2e, biber, bibtex, xelatex,
+                         lualatex, errors, adversarial cases
+  e2e/                   Playwright golden path
+docs/                    architecture (spec + ADRs), security, product
+```
+
+## What PR 1 delivers
+
+- **Auth (real, no mock path):** Argon2id password hashes, opaque session tokens
+  stored as SHA-256, `HttpOnly`/`SameSite=Lax` cookie, server-side revocation,
+  CSRF origin guard, login rate limiting, timing-equalised unknown users.
+  Pluggable `AuthProvider` for OIDC later ([ADR-0011](docs/architecture/ADRs/0011-authentication.md)).
+- **Schema + migrations:** users, credentials, sessions, projects, project
+  members (owner/editor/viewer, at most one owner), audit events. Idempotent dev seed.
+- **ACL:** `ProjectAccessService.requireRole` — non-members get 404; tenant
+  separation covered by integration and E2E tests.
+- **API conventions:** `/api/v1` prefix, typed env validation (fails fast, never
+  echoes secrets), request IDs, a single error envelope, liveness and readiness
+  (DB, pending migrations, Redis, S3) endpoints.
+- **Web:** dashboard with loading/empty/error states; editor layout (files,
+  source, PDF, problems, top bar) with keyboard focus shortcuts (`Alt+1..4`,
+  `?`), light/dark/system theme (`Alt+Shift+T`), responsive read-first layout.
+- **Compiler:** immutable revision manifest + fingerprint, job state machine,
+  `SandboxExecutor` interface, production security gate, Docker executor
+  (no network, read-only, unprivileged, no host mounts, resource limits) and a
+  clearly labelled trusted-only local executor. 17 fixtures, including
+  adversarial ones, pass in the Docker sandbox.
+- **CI:** format, lint, typecheck, unit, integration (Postgres service), compile
+  fixtures in the Docker sandbox, and E2E against the compose stack.
+
+## Measured fixture timings (Docker executor, warm image)
+
+Measured on the development container used for PR 1 (4 vCPU). One run, not a
+benchmark; see `ARCHITECTURE.md` §11 for the real benchmark plan.
+
+| Fixture                 | Engine   | Sandbox setup | latexmk | Total   |
+| ----------------------- | -------- | ------------- | ------- | ------- |
+| basic                   | pdfLaTeX | 184 ms        | 340 ms  | 588 ms  |
+| math (2 passes + TOC)   | pdfLaTeX | 197 ms        | 1033 ms | 1282 ms |
+| tikz + pgfplots         | pdfLaTeX | 179 ms        | 796 ms  | 1032 ms |
+| biber                   | pdfLaTeX | 202 ms        | 3244 ms | 3505 ms |
+| xelatex (Unicode)       | XeLaTeX  | 179 ms        | 605 ms  | 837 ms  |
+| lualatex (unicode-math) | LuaLaTeX | 168 ms        | 3962 ms | 4188 ms |
+
+## Configuration
+
+All configuration is environment variables, validated at startup
+(`apps/api/src/config/env.ts`, `apps/compile-orchestrator/src/config.ts`).
+See [`.env.example`](.env.example). Production requires `COOKIE_SECURE=true`
+(the default when `NODE_ENV=production`) and, for any compile executor, a
+strong-isolation runtime plus `COMPILE_SANDBOX_ATTESTATION`.

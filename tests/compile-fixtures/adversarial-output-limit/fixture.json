@@ -1,0 +1,6 @@
+{
+  "description": "Output larger than the configured byte limit must be refused, not published",
+  "engine": "pdflatex",
+  "limits": { "maxOutputBytes": 20000 },
+  "expect": { "outcome": "output-limit-exceeded" }
+}

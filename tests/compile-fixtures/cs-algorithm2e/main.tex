@@ -1,0 +1,15 @@
+\documentclass{article}
+\usepackage{amssymb}
+\usepackage[ruled,vlined,linesnumbered]{algorithm2e}
+\begin{document}
+\begin{algorithm}
+\caption{Euclid's algorithm}\label{alg:euclid}
+\KwIn{$a, b \in \mathbb{N}$}
+\KwOut{$\gcd(a, b)$}
+\While{$b \neq 0$}{
+  $(a, b) \gets (b, a \bmod b)$\;
+}
+\Return{$a$}\;
+\end{algorithm}
+Algorithm~\ref{alg:euclid} terminates.
+\end{document}

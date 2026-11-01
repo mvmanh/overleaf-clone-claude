@@ -1,0 +1,8 @@
+{
+  "description": "Errors inside \\input files are attributed to that file",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "compile-error",
+    "diagnostics": [{ "file": "chapters/intro.tex", "line": 3, "code": "missing-math-delimiter" }]
+  }
+}

@@ -1,0 +1,38 @@
+\documentclass[11pt]{article}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\DeclarePairedDelimiter\abs{\lvert}{\rvert}
+\begin{document}
+\tableofcontents
+\section{Primes}\label{sec:primes}
+\begin{definition}\label{def:prime}
+An integer $p > 1$ is \emph{prime} if its only positive divisors are $1$ and $p$.
+\end{definition}
+\begin{theorem}[Euclid]\label{thm:infinite}
+There are infinitely many primes.
+\end{theorem}
+\begin{proof}
+Suppose $p_1, \dots, p_n$ are all the primes and let $N = \prod_{i=1}^{n} p_i + 1$.
+Then no $p_i$ divides $N$, contradicting \cref{def:prime}.
+\end{proof}
+\section{Analysis}
+\begin{lemma}\label{lem:bound}
+For all $x \in \mathbb{R}$, $\abs*{\sin x} \le \abs{x}$.
+\end{lemma}
+\begin{align}
+  \zeta(s) &= \sum_{n=1}^{\infty} \frac{1}{n^s} = \prod_{p \text{ prime}} \frac{1}{1 - p^{-s}}, \label{eq:euler}\\
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx &= \sqrt{\pi}.
+\end{align}
+By \cref{thm:infinite} and \eqref{eq:euler}, see also \cref{lem:bound} in \cref{sec:primes}.
+\newpage
+\section{Matrices}
+\[
+  \det\begin{pmatrix} a & b \\ c & d \end{pmatrix} = ad - bc,\qquad
+  \begin{cases} x + y = 1 \\ x - y = 0 \end{cases}
+\]
+\end{document}

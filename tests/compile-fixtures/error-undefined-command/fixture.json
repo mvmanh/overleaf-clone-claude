@@ -1,0 +1,8 @@
+{
+  "description": "Undefined control sequence must be reported at main.tex:6",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "compile-error",
+    "diagnostics": [{ "file": "main.tex", "line": 6, "code": "undefined-control-sequence" }]
+  }
+}

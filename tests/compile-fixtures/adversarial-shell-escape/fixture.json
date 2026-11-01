@@ -1,0 +1,5 @@
+{
+  "description": "\\write18 must be disabled (no command execution)",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "logIncludes": ["runsystem(touch pwned-marker)...disabled"] }
+}

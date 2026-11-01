@@ -1,0 +1,25 @@
+{
+  "name": "@latex-cloud/compile-orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Compile control plane: runs untrusted TeX only through a SandboxExecutor. Separate process from web/api.",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --project unit",
+    "test:fixtures": "vitest run --project fixtures",
+    "fixtures": "tsx src/fixtures/cli.ts"
+  },
+  "dependencies": {
+    "@latex-cloud/compiler-protocol": "workspace:*",
+    "@latex-cloud/tex-log-parser": "workspace:*",
+    "tar-stream": "3.2.2",
+    "zod": "3.25.76"
+  },
+  "devDependencies": {
+    "@types/tar-stream": "3.1.5",
+    "tsx": "4.20.6",
+    "vitest": "3.2.4"
+  }
+}

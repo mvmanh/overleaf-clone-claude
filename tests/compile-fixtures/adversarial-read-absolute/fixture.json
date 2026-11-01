@@ -1,0 +1,13 @@
+{
+  "description": "Reading files by absolute path (/etc/passwd) must be refused",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "compile-error",
+    "diagnostics": [
+      {
+        "line": 3,
+        "code": "missing-file"
+      }
+    ]
+  }
+}

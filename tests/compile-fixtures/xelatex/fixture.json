@@ -1,0 +1,5 @@
+{
+  "description": "XeLaTeX with fontspec and Unicode (Vietnamese, Greek)",
+  "engine": "xelatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

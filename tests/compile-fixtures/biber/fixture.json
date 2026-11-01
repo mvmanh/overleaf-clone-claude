@@ -1,0 +1,5 @@
+{
+  "description": "biblatex + biber citations (latexmk must run biber and rerun)",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1, "logIncludes": ["biblatex"] }
+}

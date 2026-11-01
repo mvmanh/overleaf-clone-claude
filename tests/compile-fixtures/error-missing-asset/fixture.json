@@ -1,0 +1,8 @@
+{
+  "description": "Missing image must be reported as missing-file with file and line",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "compile-error",
+    "diagnostics": [{ "file": "main.tex", "line": 4, "code": "missing-file" }]
+  }
+}

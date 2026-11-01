@@ -1,0 +1,5 @@
+{
+  "description": "AMS math, theorem environments, mathtools, cross-references (multi-pass)",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 2 }
+}

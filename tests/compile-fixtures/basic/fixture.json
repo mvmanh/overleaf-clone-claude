@@ -1,0 +1,5 @@
+{
+  "description": "Minimal article with an equation",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

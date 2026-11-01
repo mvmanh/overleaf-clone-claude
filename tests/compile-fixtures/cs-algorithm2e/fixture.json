@@ -1,0 +1,8 @@
+{
+  "description": "algorithm2e pseudocode (separate fixture: it conflicts with algpseudocode)",
+  "engine": "pdflatex",
+  "expect": {
+    "outcome": "succeeded",
+    "minPages": 1
+  }
+}

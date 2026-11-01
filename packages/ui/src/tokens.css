@@ -1,0 +1,170 @@
+/*
+ * latex-cloud design tokens. Components only reference these variables, so a
+ * theme is a single block of overrides. Light is the default; dark applies via
+ * system preference unless the user picked a theme explicitly (data-theme).
+ */
+:root {
+  color-scheme: light;
+  --lc-font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --lc-font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+  --lc-space-1: 4px;
+  --lc-space-2: 8px;
+  --lc-space-3: 12px;
+  --lc-space-4: 16px;
+  --lc-space-5: 24px;
+  --lc-space-6: 32px;
+  --lc-space-7: 48px;
+
+  --lc-radius-sm: 4px;
+  --lc-radius-md: 6px;
+  --lc-radius-lg: 10px;
+
+  --lc-text-xs: 12px;
+  --lc-text-sm: 13px;
+  --lc-text-md: 14px;
+  --lc-text-lg: 16px;
+  --lc-text-xl: 20px;
+  --lc-text-2xl: 26px;
+
+  --lc-bg: #f7f7f5;
+  --lc-surface: #ffffff;
+  --lc-surface-raised: #ffffff;
+  --lc-surface-sunken: #f0f0ed;
+  --lc-border: #e2e2dc;
+  --lc-border-strong: #c9c9c1;
+  --lc-text: #1c1c1a;
+  --lc-text-muted: #5e5e57;
+  --lc-text-subtle: #8a8a82;
+  --lc-accent: #1f6f5c;
+  --lc-accent-hover: #185a4a;
+  --lc-accent-contrast: #ffffff;
+  --lc-accent-soft: #e3f1ec;
+  --lc-focus: #2b7fff;
+  --lc-success: #2f7d32;
+  --lc-success-soft: #e6f2e6;
+  --lc-warning: #9a6200;
+  --lc-warning-soft: #fbf0d9;
+  --lc-danger: #b42318;
+  --lc-danger-soft: #fdecea;
+  --lc-info: #2557a7;
+  --lc-info-soft: #e7eefa;
+
+  --lc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.06);
+  --lc-shadow-md: 0 4px 16px rgb(0 0 0 / 0.08);
+  --lc-transition: 120ms ease;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --lc-bg: #121413;
+    --lc-surface: #191c1b;
+    --lc-surface-raised: #202423;
+    --lc-surface-sunken: #0e100f;
+    --lc-border: #2c312f;
+    --lc-border-strong: #3d4441;
+    --lc-text: #e8eae8;
+    --lc-text-muted: #a3aaa6;
+    --lc-text-subtle: #747c78;
+    --lc-accent: #4fbf9f;
+    --lc-accent-hover: #6fd1b4;
+    --lc-accent-contrast: #0b1512;
+    --lc-accent-soft: #17312a;
+    --lc-focus: #6aa5ff;
+    --lc-success: #6cc070;
+    --lc-success-soft: #18291a;
+    --lc-warning: #e0a537;
+    --lc-warning-soft: #2e2412;
+    --lc-danger: #f0776c;
+    --lc-danger-soft: #341a18;
+    --lc-info: #7fa8ee;
+    --lc-info-soft: #1a2436;
+    --lc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+    --lc-shadow-md: 0 6px 20px rgb(0 0 0 / 0.45);
+  }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --lc-bg: #121413;
+  --lc-surface: #191c1b;
+  --lc-surface-raised: #202423;
+  --lc-surface-sunken: #0e100f;
+  --lc-border: #2c312f;
+  --lc-border-strong: #3d4441;
+  --lc-text: #e8eae8;
+  --lc-text-muted: #a3aaa6;
+  --lc-text-subtle: #747c78;
+  --lc-accent: #4fbf9f;
+  --lc-accent-hover: #6fd1b4;
+  --lc-accent-contrast: #0b1512;
+  --lc-accent-soft: #17312a;
+  --lc-focus: #6aa5ff;
+  --lc-success: #6cc070;
+  --lc-success-soft: #18291a;
+  --lc-warning: #e0a537;
+  --lc-warning-soft: #2e2412;
+  --lc-danger: #f0776c;
+  --lc-danger-soft: #341a18;
+  --lc-info: #7fa8ee;
+  --lc-info-soft: #1a2436;
+  --lc-shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --lc-shadow-md: 0 6px 20px rgb(0 0 0 / 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --lc-transition: 0ms;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--lc-bg);
+  color: var(--lc-text);
+  font-family: var(--lc-font-sans);
+  font-size: var(--lc-text-md);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--lc-focus);
+  outline-offset: 2px;
+}
+
+a {
+  color: var(--lc-accent);
+}
+
+.lc-visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.lc-skip-link {
+  position: absolute;
+  left: var(--lc-space-2);
+  top: -100px;
+  z-index: 100;
+  padding: var(--lc-space-2) var(--lc-space-3);
+  background: var(--lc-surface-raised);
+  border: 1px solid var(--lc-border-strong);
+  border-radius: var(--lc-radius-md);
+}
+.lc-skip-link:focus {
+  top: var(--lc-space-2);
+}

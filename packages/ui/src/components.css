@@ -1,0 +1,196 @@
+.lc-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lc-space-2);
+  height: 32px;
+  padding: 0 var(--lc-space-3);
+  border: 1px solid var(--lc-border-strong);
+  border-radius: var(--lc-radius-md);
+  background: var(--lc-surface-raised);
+  color: var(--lc-text);
+  font: inherit;
+  font-size: var(--lc-text-sm);
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background var(--lc-transition),
+    border-color var(--lc-transition);
+}
+.lc-button:hover:not(:disabled) {
+  background: var(--lc-surface-sunken);
+}
+.lc-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.lc-button[data-variant='primary'] {
+  background: var(--lc-accent);
+  border-color: var(--lc-accent);
+  color: var(--lc-accent-contrast);
+}
+.lc-button[data-variant='primary']:hover:not(:disabled) {
+  background: var(--lc-accent-hover);
+}
+.lc-button[data-variant='ghost'] {
+  background: transparent;
+  border-color: transparent;
+}
+.lc-button[data-variant='ghost']:hover:not(:disabled) {
+  background: var(--lc-surface-sunken);
+}
+.lc-button[data-size='sm'] {
+  height: 26px;
+  padding: 0 var(--lc-space-2);
+  font-size: var(--lc-text-xs);
+}
+.lc-button[data-block='true'] {
+  width: 100%;
+}
+
+.lc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 var(--lc-space-2);
+  border-radius: 999px;
+  font-size: var(--lc-text-xs);
+  font-weight: 500;
+  background: var(--lc-surface-sunken);
+  color: var(--lc-text-muted);
+  white-space: nowrap;
+}
+.lc-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.lc-badge[data-dot='false']::before {
+  display: none;
+}
+.lc-badge[data-tone='success'] {
+  background: var(--lc-success-soft);
+  color: var(--lc-success);
+}
+.lc-badge[data-tone='warning'] {
+  background: var(--lc-warning-soft);
+  color: var(--lc-warning);
+}
+.lc-badge[data-tone='danger'] {
+  background: var(--lc-danger-soft);
+  color: var(--lc-danger);
+}
+.lc-badge[data-tone='info'] {
+  background: var(--lc-info-soft);
+  color: var(--lc-info);
+}
+.lc-badge[data-tone='accent'] {
+  background: var(--lc-accent-soft);
+  color: var(--lc-accent);
+}
+
+.lc-kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 0 5px;
+  border: 1px solid var(--lc-border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--lc-radius-sm);
+  background: var(--lc-surface);
+  font-family: var(--lc-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--lc-text-muted);
+}
+
+.lc-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--lc-border-strong);
+  border-top-color: var(--lc-accent);
+  border-radius: 50%;
+  animation: lc-spin 700ms linear infinite;
+}
+@keyframes lc-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lc-spinner {
+    animation-duration: 2s;
+  }
+}
+
+.lc-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--lc-space-2);
+  padding: var(--lc-space-6) var(--lc-space-4);
+  text-align: center;
+  color: var(--lc-text-muted);
+}
+.lc-empty__title {
+  margin: 0;
+  font-size: var(--lc-text-md);
+  font-weight: 600;
+  color: var(--lc-text);
+}
+.lc-empty__body {
+  margin: 0;
+  max-width: 42ch;
+  font-size: var(--lc-text-sm);
+}
+
+.lc-alert {
+  padding: var(--lc-space-3) var(--lc-space-4);
+  border-radius: var(--lc-radius-md);
+  border: 1px solid transparent;
+  font-size: var(--lc-text-sm);
+}
+.lc-alert[data-tone='danger'] {
+  background: var(--lc-danger-soft);
+  border-color: color-mix(in srgb, var(--lc-danger) 30%, transparent);
+  color: var(--lc-danger);
+}
+.lc-alert[data-tone='warning'] {
+  background: var(--lc-warning-soft);
+  border-color: color-mix(in srgb, var(--lc-warning) 30%, transparent);
+  color: var(--lc-warning);
+}
+.lc-alert[data-tone='info'] {
+  background: var(--lc-info-soft);
+  border-color: color-mix(in srgb, var(--lc-info) 30%, transparent);
+  color: var(--lc-info);
+}
+
+.lc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lc-field__label {
+  font-size: var(--lc-text-sm);
+  font-weight: 500;
+}
+.lc-input {
+  height: 36px;
+  padding: 0 var(--lc-space-3);
+  border: 1px solid var(--lc-border-strong);
+  border-radius: var(--lc-radius-md);
+  background: var(--lc-surface);
+  color: var(--lc-text);
+  font: inherit;
+}
+.lc-input:focus-visible {
+  outline-offset: 0;
+  border-color: var(--lc-focus);
+}

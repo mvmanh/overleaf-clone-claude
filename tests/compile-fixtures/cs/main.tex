@@ -1,0 +1,34 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\lstset{basicstyle=\ttfamily\small, keywordstyle=\bfseries, frame=single}
+\begin{document}
+\Cref{alg:bfs} is breadth-first search; \cref{lst:qs} is quicksort.
+\begin{algorithm}
+\caption{Breadth-first search}\label{alg:bfs}
+\begin{algorithmic}[1]
+\Procedure{BFS}{$G, s$}
+  \State $Q \gets \langle s \rangle$; mark $s$
+  \While{$Q \neq \emptyset$}
+    \State $u \gets \Call{Dequeue}{Q}$
+    \For{$v \in \mathrm{Adj}[u]$}
+      \If{$v$ unmarked} \State mark $v$; \Call{Enqueue}{$Q, v$} \EndIf
+    \EndFor
+  \EndWhile
+\EndProcedure
+\end{algorithmic}
+\end{algorithm}
+\begin{lstlisting}[language=Python, caption={Quicksort}, label={lst:qs}]
+def quicksort(xs):
+    if len(xs) <= 1:
+        return xs
+    pivot, *rest = xs
+    return quicksort([x for x in rest if x < pivot]) + [pivot] + \
+           quicksort([x for x in rest if x >= pivot])
+\end{lstlisting}
+\end{document}
