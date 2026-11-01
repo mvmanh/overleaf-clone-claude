@@ -6,6 +6,7 @@ import { ProjectListResponse, type ProjectSummary } from '@latex-cloud/shared';
 import { Alert, Badge, Button, EmptyState, type Tone } from '@latex-cloud/ui';
 import { ApiError, apiFetch } from '../../lib/api';
 import { ENGINE_LABELS, relativeTime } from '../../lib/format';
+import { ImportZipButton } from './ImportZipButton';
 import { NewProjectDialog } from './NewProjectDialog';
 
 type State =
@@ -60,9 +61,12 @@ export function ProjectList() {
           <h1 className="page__title">Projects</h1>
           <p className="page__subtitle">Projects you own or that were shared with you.</p>
         </div>
-        <Button variant="primary" onClick={() => setCreating(true)} title="New project (N)">
-          New project
-        </Button>
+        <div className="page__actions">
+          <ImportZipButton />
+          <Button variant="primary" onClick={() => setCreating(true)} title="New project (N)">
+            New project
+          </Button>
+        </div>
       </div>
       {renderBody(state, load, () => setCreating(true))}
       <NewProjectDialog open={creating} onClose={() => setCreating(false)} />

@@ -31,6 +31,28 @@ export const TEXT_FILE_EXTENSIONS: readonly string[] = [
   'gnuplot',
 ];
 
+/**
+ * Binary assets accepted by upload/import. Deliberately an allow-list: images
+ * TeX engines can include, PDF figures, and fonts for fontspec. Content must
+ * match the extension's file signature (no polyglots, no executables).
+ */
+export const BINARY_FILE_EXTENSIONS: readonly string[] = [
+  'png',
+  'jpg',
+  'jpeg',
+  'pdf',
+  'eps',
+  'ttf',
+  'otf',
+];
+
+/** Upper bound for one uploaded/imported file. */
+export const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+/** Upper bound for all live files of a project (keeps snapshots within sandbox limits). */
+export const MAX_PROJECT_BYTES = 150 * 1024 * 1024;
+/** Upper bound for an uploaded ZIP archive. */
+export const MAX_ZIP_BYTES = 100 * 1024 * 1024;
+
 /** Upper bound for one text file (UTF-8 bytes). */
 export const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 /** Upper bound for the number of live files in a project. */
@@ -44,6 +66,15 @@ export function extensionOf(path: string): string {
 
 export function isTextPath(path: string): boolean {
   return TEXT_FILE_EXTENSIONS.includes(extensionOf(path));
+}
+
+export function isBinaryPath(path: string): boolean {
+  return BINARY_FILE_EXTENSIONS.includes(extensionOf(path));
+}
+
+/** Text or allowed binary: the only files a project may contain. */
+export function isAllowedPath(path: string): boolean {
+  return isTextPath(path) || isBinaryPath(path);
 }
 
 export function isTexRoot(path: string): boolean {
@@ -104,3 +135,9 @@ export type RenameFileRequest = z.infer<typeof RenameFileRequest>;
 /** Body of `PUT …/files/{id}/content`; send the last known sha256 in `If-Match`. */
 export const SaveFileRequest = z.object({ content: FileContent }).strict();
 export type SaveFileRequest = z.infer<typeof SaveFileRequest>;
+
+export const ImportSkippedEntry = z.object({ path: z.string(), reason: z.string() });
+export type ImportSkippedEntry = z.infer<typeof ImportSkippedEntry>;
+
+export const UploadFileResponse = z.object({ file: ProjectFile, replaced: z.boolean() });
+export type UploadFileResponse = z.infer<typeof UploadFileResponse>;

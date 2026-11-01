@@ -1,10 +1,15 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { type Kysely, sql, type Transaction } from 'kysely';
+import type { Readable } from 'node:stream';
+import { ZipFile as ZipWriter } from 'yazl';
 import {
   type CreateFileRequest,
+  extensionOf,
   isTexRoot,
   isTextPath,
   MAX_FILES_PER_PROJECT,
+  MAX_PROJECT_BYTES,
+  MAX_TEXT_FILE_BYTES,
   type ProjectFile,
   type ProjectFileListResponse,
   type ProjectFileWithContent,
@@ -12,11 +17,18 @@ import {
 import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
+import { BLOB_STORAGE, type BlobStorage } from '../storage/blob-storage';
 import { recordAudit } from './audit';
+import { classifyFile, contentTypeFor, isInlineSafe } from './file-types';
 import { sha256Hex } from './hash';
 import { isUuid, ProjectAccessService } from './project-access.service';
 
 const conflict = (message: string) => new ApiException('CONFLICT', message, HttpStatus.CONFLICT);
+const invalid = (message: string) =>
+  new ApiException('VALIDATION_FAILED', message, HttpStatus.BAD_REQUEST);
+
+/** Content-addressed per project: identical uploads share one object, never across projects. */
+export const fileBlobKey = (projectId: string, sha256: string) => `files/${projectId}/${sha256}`;
 
 const FILE_COLUMNS = ['id', 'path', 'kind', 'size_bytes', 'sha256', 'updated_at'] as const;
 
@@ -50,7 +62,174 @@ export class FilesService {
   constructor(
     @Inject(DB) private readonly db: Kysely<Database>,
     private readonly access: ProjectAccessService,
+    @Inject(BLOB_STORAGE) private readonly blobs: BlobStorage,
   ) {}
+
+  /**
+   * Uploads one file (text or allowed binary). With `overwrite`, replaces an
+   * existing file at the same path; otherwise an existing path is a conflict.
+   */
+  async upload(
+    userId: string,
+    projectId: string,
+    path: string,
+    bytes: Buffer,
+    overwrite: boolean,
+  ): Promise<{ file: ProjectFile; replaced: boolean }> {
+    // Cheap authorization before storing anything.
+    await this.access.requireAction(userId, projectId, 'files:write');
+    const classified = classifyFile(path, bytes);
+    if (!classified.ok) throw invalid(`${path}: ${classified.reason}.`);
+    if (classified.kind === 'text' && bytes.byteLength > MAX_TEXT_FILE_BYTES) {
+      throw new ApiException(
+        'PAYLOAD_TOO_LARGE',
+        'Text files are limited to 2 MB.',
+        HttpStatus.PAYLOAD_TOO_LARGE,
+      );
+    }
+    const sha = sha256Hex(bytes);
+    let blobKey: string | null = null;
+    if (classified.kind === 'binary') {
+      blobKey = fileBlobKey(projectId, sha);
+      if (!(await this.blobs.exists(blobKey)))
+        await this.blobs.put(blobKey, bytes, contentTypeFor(path));
+    }
+
+    return this.db.transaction().execute(async (trx) => {
+      await this.access.lockForAction(trx, userId, projectId, 'files:write', 'update');
+      const existing = await trx
+        .selectFrom('project_files')
+        .select(['id', 'path', 'kind', 'size_bytes'])
+        .where('project_id', '=', projectId)
+        .where('deleted_at', 'is', null)
+        .where(sql`lower(path)`, '=', path.toLowerCase())
+        .executeTakeFirst();
+      if (existing && !overwrite) throw conflict(`A file named "${existing.path}" already exists.`);
+      if (existing && existing.kind !== classified.kind)
+        throw conflict(`Cannot replace "${existing.path}" with a different kind of file.`);
+
+      const usage = await trx
+        .selectFrom('project_files')
+        .select((e) => [
+          e.fn.coalesce(e.fn.sum<string>('size_bytes'), sql<string>`0`).as('bytes'),
+          e.fn.countAll<string>().as('n'),
+        ])
+        .where('project_id', '=', projectId)
+        .where('deleted_at', 'is', null)
+        .executeTakeFirstOrThrow();
+      if (
+        Number(usage.bytes) - (existing?.size_bytes ?? 0) + bytes.byteLength >
+        MAX_PROJECT_BYTES
+      ) {
+        throw new ApiException(
+          'PAYLOAD_TOO_LARGE',
+          `Projects are limited to ${MAX_PROJECT_BYTES / 1024 / 1024} MB in total.`,
+          HttpStatus.PAYLOAD_TOO_LARGE,
+        );
+      }
+      if (!existing && Number(usage.n) >= MAX_FILES_PER_PROJECT) {
+        throw conflict(`A project can contain at most ${MAX_FILES_PER_PROJECT} files.`);
+      }
+
+      const values = {
+        content_text: classified.kind === 'text' ? classified.text : null,
+        blob_key: blobKey,
+        size_bytes: bytes.byteLength,
+        sha256: classified.kind === 'text' ? sha256Hex(classified.text) : sha,
+        updated_by: userId,
+      };
+      let row;
+      if (existing) {
+        row = await trx
+          .updateTable('project_files')
+          .set({ ...values, updated_at: sql`now()` })
+          .where('id', '=', existing.id)
+          .returning(FILE_COLUMNS)
+          .executeTakeFirstOrThrow();
+      } else {
+        row = await trx
+          .insertInto('project_files')
+          .values({
+            ...values,
+            project_id: projectId,
+            path,
+            kind: classified.kind,
+            created_by: userId,
+          })
+          .returning(FILE_COLUMNS)
+          .executeTakeFirstOrThrow();
+      }
+      await trx
+        .updateTable('projects')
+        .set({ updated_at: sql`now()` })
+        .where('id', '=', projectId)
+        .execute();
+      await recordAudit(trx, {
+        projectId,
+        actorId: userId,
+        action: existing ? 'file.replaced' : 'file.uploaded',
+        metadata: { path, kind: classified.kind, sizeBytes: bytes.byteLength },
+      });
+      return { file: toFile(row), replaced: Boolean(existing) };
+    });
+  }
+
+  /** Raw bytes of any file (download, image/PDF preview). */
+  async raw(
+    userId: string,
+    projectId: string,
+    fileId: string,
+  ): Promise<{
+    body: Buffer | Readable;
+    size: number;
+    path: string;
+    contentType: string;
+    inline: boolean;
+    sha256: string;
+  }> {
+    await this.access.requireAction(userId, projectId, 'files:read');
+    const row = await this.liveFile(this.db, projectId, fileId);
+    const base = {
+      size: row.size_bytes,
+      path: row.path,
+      contentType: contentTypeFor(row.path),
+      sha256: row.sha256,
+    };
+    if (row.kind === 'text')
+      return { ...base, body: Buffer.from(row.content_text ?? '', 'utf8'), inline: false };
+    const blob = await this.db
+      .selectFrom('project_files')
+      .select('blob_key')
+      .where('id', '=', fileId)
+      .executeTakeFirstOrThrow();
+    const { stream } = await this.blobs.getStream(blob.blob_key!);
+    return { ...base, body: stream, inline: isInlineSafe(row.path) };
+  }
+
+  /** Streams every live file of the project as a ZIP (viewer+). */
+  async exportZip(userId: string, projectId: string): Promise<{ stream: Readable; name: string }> {
+    await this.access.requireAction(userId, projectId, 'files:read');
+    const project = await this.db
+      .selectFrom('projects')
+      .select('name')
+      .where('id', '=', projectId)
+      .executeTakeFirstOrThrow();
+    const rows = await this.db
+      .selectFrom('project_files')
+      .select(['path', 'kind', 'content_text', 'blob_key'])
+      .where('project_id', '=', projectId)
+      .where('deleted_at', 'is', null)
+      .orderBy('path')
+      .execute();
+    const zip = new ZipWriter();
+    for (const r of rows) {
+      if (r.kind === 'text') zip.addBuffer(Buffer.from(r.content_text ?? '', 'utf8'), r.path);
+      else zip.addBuffer(await this.blobs.get(r.blob_key!), r.path, { compress: false });
+    }
+    zip.end();
+    const name = project.name.replace(/[^\p{L}\p{N}._ -]+/gu, '_').trim() || 'project';
+    return { stream: zip.outputStream as unknown as Readable, name };
+  }
 
   async list(userId: string, projectId: string): Promise<ProjectFileListResponse> {
     await this.access.requireAction(userId, projectId, 'files:read');
@@ -193,6 +372,9 @@ export class FilesService {
       await this.access.lockForAction(trx, userId, projectId, 'files:write', 'update');
       const current = await this.liveFile(trx, projectId, fileId);
       if (current.path === newPath) return toFile(current);
+      if (current.kind === 'binary' && extensionOf(newPath) !== extensionOf(current.path)) {
+        throw invalid('Renaming cannot change the type of an uploaded file.');
+      }
       if (current.kind === 'text' && !isTextPath(newPath)) {
         throw new ApiException(
           'VALIDATION_FAILED',

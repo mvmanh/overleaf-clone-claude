@@ -13,6 +13,7 @@ import { S3 } from '../health/dependencies';
 export interface BlobStorage {
   put(key: string, body: Uint8Array, contentType: string): Promise<void>;
   exists(key: string): Promise<boolean>;
+  get(key: string): Promise<Buffer>;
   getStream(key: string): Promise<{ stream: Readable; size: number | undefined }>;
 }
 
@@ -43,6 +44,13 @@ export class S3BlobStorage implements BlobStorage {
     } catch {
       return false;
     }
+  }
+
+  async get(key: string): Promise<Buffer> {
+    const res = await this.s3.send(
+      new GetObjectCommand({ Bucket: this.config.S3_BUCKET, Key: key }),
+    );
+    return Buffer.from(await res.Body!.transformToByteArray());
   }
 
   async getStream(key: string): Promise<{ stream: Readable; size: number | undefined }> {

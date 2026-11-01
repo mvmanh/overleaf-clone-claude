@@ -21,7 +21,7 @@ import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
 import { ensureRedisConnected, REDIS } from '../health/dependencies';
 import { isUuid, ProjectAccessService } from '../projects/project-access.service';
-import { BLOB_STORAGE, type BlobStorage } from './blob-storage';
+import { BLOB_STORAGE, type BlobStorage } from '../storage/blob-storage';
 import { COMPILE_QUEUE, type CompileQueue } from './compile-queue';
 
 type JobRow = Awaited<ReturnType<CompilesService['jobRows']>>[number];
@@ -86,10 +86,9 @@ export class CompilesService {
         if (!project) throw notFound('Project');
         const files = await trx
           .selectFrom('project_files')
-          .select(['path', 'content_text'])
+          .select(['path', 'kind', 'content_text', 'blob_key', 'sha256'])
           .where('project_id', '=', projectId)
           .where('deleted_at', 'is', null)
-          .where('kind', '=', 'text')
           .orderBy('path')
           .execute();
         return { project, files };
@@ -104,10 +103,23 @@ export class CompilesService {
       );
     }
 
-    const snapshotFiles = captured.files.map((f) => ({
-      path: f.path,
-      content: Buffer.from(f.content_text ?? '', 'utf8'),
-    }));
+    // Binary blobs are content-addressed and immutable, so fetching them after
+    // the transaction cannot mix versions; the hash check proves it.
+    const snapshotFiles = await Promise.all(
+      captured.files.map(async (f) => {
+        if (f.kind === 'text')
+          return { path: f.path, content: Buffer.from(f.content_text ?? '', 'utf8') };
+        const content = await this.blobs.get(f.blob_key!);
+        if (sha256Hex(content) !== f.sha256) {
+          throw new ApiException(
+            'INTERNAL',
+            `Stored content of ${f.path} is corrupt.`,
+            HttpStatus.INTERNAL_SERVER_ERROR,
+          );
+        }
+        return { path: f.path, content };
+      }),
+    );
     const manifest: RevisionManifest = {
       schemaVersion: 1,
       rootFile: root,

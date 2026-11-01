@@ -3,6 +3,7 @@ import { Global, Inject, Module, type OnApplicationShutdown } from '@nestjs/comm
 import type { Redis } from 'ioredis';
 import { APP_CONFIG, type AppConfig } from '../config/env';
 import { createRedis, createS3, REDIS, S3 } from '../health/dependencies';
+import { BLOB_STORAGE, S3BlobStorage } from '../storage/blob-storage';
 
 /** Process-wide clients for Redis and object storage, shared by every module. */
 @Global()
@@ -10,8 +11,9 @@ import { createRedis, createS3, REDIS, S3 } from '../health/dependencies';
   providers: [
     { provide: REDIS, inject: [APP_CONFIG], useFactory: (c: AppConfig) => createRedis(c) },
     { provide: S3, inject: [APP_CONFIG], useFactory: (c: AppConfig) => createS3(c) },
+    { provide: BLOB_STORAGE, useClass: S3BlobStorage },
   ],
-  exports: [REDIS, S3],
+  exports: [REDIS, S3, BLOB_STORAGE],
 })
 export class InfraModule implements OnApplicationShutdown {
   constructor(

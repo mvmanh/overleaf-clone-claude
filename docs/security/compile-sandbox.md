@@ -79,6 +79,21 @@ Additional controls added with the compile pipeline:
   `Content-Security-Policy: sandbox` and `nosniff`; PDF.js runs with
   `isEvalSupported: false`.
 
+## Uploads and archives
+
+- Allow-listed types only (text: UTF-8 TeX/BibTeX/etc.; binary: PNG, JPEG,
+  PDF, EPS, TTF, OTF) and the binary signature must match the extension.
+- ZIP import: entry count, per-file, total and compression-ratio limits are
+  checked from the central directory before inflating and again on the actual
+  bytes; traversal, absolute/drive paths and case-insensitive duplicates reject
+  the archive; symlinks, `latexmkrc`, reserved names and build outputs are
+  skipped. Uploaded/imported names pass the same `validateProjectPath`.
+- Raw files are served with `Content-Security-Policy: sandbox`, `nosniff`, and
+  only images/PDFs inline; everything else is an attachment.
+- Remaining gap: image/font _parsers_ inside TeX (libpng, libjpeg, FreeType,
+  Ghostscript for EPS) process attacker-controlled bytes in the sandbox — one
+  more reason the production sandbox must be gVisor/microVM.
+
 ## Known gaps (must close before any untrusted use)
 
 1. **Kernel isolation.** runc shares the host kernel. Required: gVisor

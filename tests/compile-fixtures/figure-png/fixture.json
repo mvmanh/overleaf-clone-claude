@@ -1,0 +1,5 @@
+{
+  "description": "\\includegraphics of an uploaded PNG in a subfolder (binary files reach the sandbox)",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

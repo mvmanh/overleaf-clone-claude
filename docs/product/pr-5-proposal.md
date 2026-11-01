@@ -1,6 +1,13 @@
-# Next milestone proposal — PR 5: binary assets, uploads and ZIP import
+# PR 5 — binary assets, uploads and ZIP import/export
 
-Not started.
+**Status: implemented.** Notes vs. the proposal:
+
+- Uploads go through the API (multipart, streamed into memory with per-file limits) rather than presigned URLs; bytes are signature-checked before storage.
+- Binary blobs are content-addressed per project (`files/<project>/<sha256>`), never shared across projects.
+- ZIP import runs in the API process: it parses but never executes content. Structural attacks reject the archive; unsupported entries are reported.
+- SVG is not accepted (it needs an external converter, i.e. shell escape).
+
+Original proposal follows.
 
 ## Scope
 

@@ -114,3 +114,12 @@ export type ProjectAction = keyof typeof PROJECT_PERMISSIONS;
 export function can(role: ProjectRole, action: ProjectAction): boolean {
   return roleSatisfies(role, PROJECT_PERMISSIONS[action]);
 }
+
+export const ImportProjectResponse = z.object({
+  project: ProjectSummary,
+  importedFiles: z.number().int().nonnegative(),
+  skipped: z.array(z.object({ path: z.string(), reason: z.string() })),
+  /** How the main file and engine were chosen, for the UI to explain. */
+  detected: z.object({ rootFile: z.string().nullable(), engine: TexEngineName }),
+});
+export type ImportProjectResponse = z.infer<typeof ImportProjectResponse>;

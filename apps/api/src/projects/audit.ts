@@ -12,7 +12,10 @@ export type AuditAction =
   | 'member.left'
   | 'file.created'
   | 'file.renamed'
-  | 'file.deleted';
+  | 'file.deleted'
+  | 'file.uploaded'
+  | 'file.replaced'
+  | 'project.imported';
 
 /** Appends an audit event inside the caller's transaction (all-or-nothing with the change). */
 export async function recordAudit(

@@ -1,7 +1,7 @@
 'use client';
 
 import { type FormEvent, type KeyboardEvent, useMemo, useRef, useState } from 'react';
-import { isTexRoot, type ProjectFile } from '@latex-cloud/shared';
+import { extensionOf, isTexRoot, type ProjectFile } from '@latex-cloud/shared';
 import { Alert, Badge, Button, Dialog, TextField } from '@latex-cloud/ui';
 import { ApiError } from '../../../lib/api';
 
@@ -13,6 +13,18 @@ interface Folder {
 }
 
 /** Builds a folder hierarchy from flat project paths (folders first, then files, alphabetical). */
+function fileIcon(f: ProjectFile): string {
+  if (isTexRoot(f.path)) return 'T';
+  if (f.path.endsWith('.bib')) return 'B';
+  if (f.kind === 'binary') {
+    const ext = extensionOf(f.path);
+    if (ext === 'pdf') return 'P';
+    if (ext === 'ttf' || ext === 'otf') return 'F';
+    return 'I';
+  }
+  return '·';
+}
+
 export function buildTree(files: ProjectFile[]): Folder {
   const root: Folder = { name: '', path: '', folders: [], files: [] };
   for (const f of files) {
@@ -51,6 +63,8 @@ export function FileTree({
   onRename,
   onDelete,
   onSetRoot,
+  upload,
+  exportUrl,
 }: {
   files: ProjectFile[];
   rootFile: string | null;
@@ -61,12 +75,19 @@ export function FileTree({
   onRename: (f: ProjectFile, path: string) => Promise<void>;
   onDelete: (f: ProjectFile) => Promise<void>;
   onSetRoot: (f: ProjectFile) => Promise<void>;
+  /** Uploads one file; resolves 'conflict' when the path exists and overwrite is false. */
+  upload: (file: File, path: string, overwrite: boolean) => Promise<'ok' | 'conflict'>;
+  exportUrl: string;
 }) {
   const tree = useMemo(() => buildTree(files), [files]);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [modal, setModal] = useState<Modal>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [conflicts, setConflicts] = useState<{ file: File; path: string }[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLUListElement>(null);
   const selected = files.find((f) => f.id === selectedId) ?? null;
   const selectedFolder = selected?.path.includes('/')
@@ -149,7 +170,7 @@ export function FileTree({
               onClick={() => onOpen(f)}
             >
               <span className="tree__icon" aria-hidden>
-                {isTexRoot(f.path) ? 'T' : f.path.endsWith('.bib') ? 'B' : '·'}
+                {fileIcon(f)}
               </span>
               <span className="tree__name">{name}</span>
               {isRoot ? (
@@ -164,13 +185,80 @@ export function FileTree({
     </>
   );
 
+  async function uploadAll(items: { file: File; path: string }[], overwrite: boolean) {
+    setError(null);
+    const conflicting: { file: File; path: string }[] = [];
+    const failures: string[] = [];
+    for (const [i, item] of items.entries()) {
+      setUploading(`Uploading ${i + 1} / ${items.length}: ${item.path}`);
+      try {
+        if ((await upload(item.file, item.path, overwrite)) === 'conflict') conflicting.push(item);
+      } catch (e) {
+        failures.push(e instanceof ApiError ? e.message : `${item.path}: upload failed.`);
+      }
+    }
+    setUploading(null);
+    if (failures.length) setError(failures.join(' '));
+    setConflicts(conflicting);
+  }
+
+  function startUpload(list: FileList | File[] | null) {
+    const picked = Array.from(list ?? []);
+    if (!picked.length) return;
+    void uploadAll(
+      picked.map((file) => ({
+        file,
+        path: selectedFolder ? `${selectedFolder}/${file.name}` : file.name,
+      })),
+      false,
+    );
+  }
+
   return (
-    <div className="tree">
+    <div
+      className="tree"
+      data-dragging={dragging ? 'true' : undefined}
+      onDragOver={(e) => {
+        if (!canWrite || !e.dataTransfer.types.includes('Files')) return;
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false);
+      }}
+      onDrop={(e) => {
+        if (!canWrite) return;
+        e.preventDefault();
+        setDragging(false);
+        startUpload(e.dataTransfer.files);
+      }}
+      data-testid="file-tree"
+    >
       {canWrite ? (
         <div className="tree__toolbar">
           <Button size="sm" onClick={() => setModal({ kind: 'create', folder: selectedFolder })}>
             New file
           </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => fileInput.current?.click()}
+            disabled={uploading !== null}
+          >
+            Upload
+          </Button>
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            data-testid="upload-input"
+            accept=".tex,.bib,.sty,.cls,.bst,.txt,.png,.jpg,.jpeg,.pdf,.eps,.ttf,.otf,.csv,.dat"
+            onChange={(e) => {
+              startUpload(e.target.files);
+              e.target.value = '';
+            }}
+          />
           {selected ? (
             <>
               <Button
@@ -203,6 +291,11 @@ export function FileTree({
           ) : null}
         </div>
       ) : null}
+      {uploading ? (
+        <p className="tree__drop-hint" role="status">
+          {uploading}
+        </p>
+      ) : null}
       {error && !modal ? <Alert tone="danger">{error}</Alert> : null}
       <ul
         ref={list}
@@ -213,6 +306,23 @@ export function FileTree({
       >
         {renderFolder(tree, 0)}
       </ul>
+      {canWrite ? (
+        <p className="tree__drop-hint">
+          Drop files here to upload (images, PDF, fonts, .tex, .bib).
+        </p>
+      ) : null}
+      <div className="tree__toolbar">
+        <a
+          className="lc-button"
+          data-size="sm"
+          data-variant="ghost"
+          href={exportUrl}
+          download
+          data-testid="download-zip"
+        >
+          Download ZIP
+        </a>
+      </div>
 
       <PathDialog
         open={modal?.kind === 'create'}
@@ -244,6 +354,30 @@ export function FileTree({
           modal?.kind === 'rename' ? act(() => onRename(modal.file, path)) : Promise.resolve()
         }
       />
+      <Dialog
+        open={conflicts.length > 0}
+        onClose={() => setConflicts([])}
+        title={
+          conflicts.length === 1
+            ? 'Replace existing file?'
+            : `Replace ${conflicts.length} existing files?`
+        }
+        description={conflicts.map((c) => c.path).join(', ')}
+      >
+        <div className="dialog-form__actions">
+          <Button onClick={() => setConflicts([])}>Keep existing</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              const items = conflicts;
+              setConflicts([]);
+              void uploadAll(items, true);
+            }}
+          >
+            Replace
+          </Button>
+        </div>
+      </Dialog>
       <Dialog
         open={modal?.kind === 'delete'}
         onClose={() => {

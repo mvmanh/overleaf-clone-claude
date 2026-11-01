@@ -10,7 +10,7 @@ import {
   ProjectFileListResponse,
 } from '@latex-cloud/shared';
 import { unpackSnapshot } from '@latex-cloud/compiler-protocol';
-import { BLOB_STORAGE, type BlobStorage } from '../src/compiles/blob-storage';
+import { BLOB_STORAGE, type BlobStorage } from '../src/storage/blob-storage';
 import { COMPILE_QUEUE, type CompileQueue } from '../src/compiles/compile-queue';
 import { REDIS } from '../src/health/dependencies';
 import { SEED_PROJECTS } from '../src/database/seed-data';
@@ -25,6 +25,11 @@ const TEX_IMAGE = 'latex-cloud/texlive@sha256:' + 'a'.repeat(64);
 const fakeStorage: BlobStorage = {
   put: async (k, b) => void blobs.set(k, Buffer.from(b)),
   exists: async (k) => blobs.has(k),
+  get: async (k) => {
+    const b = blobs.get(k);
+    if (!b) throw new Error('missing');
+    return b;
+  },
   getStream: async (k) => {
     const b = blobs.get(k);
     if (!b) throw new Error('missing');

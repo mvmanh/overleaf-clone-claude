@@ -8,9 +8,16 @@ import {
   Param,
   Patch,
   Post,
+  Res,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import {
   CreateProjectRequest,
+  type ImportProjectResponse,
+  MAX_ZIP_BYTES,
   InviteMemberRequest,
   type ProjectListResponse,
   type ProjectMembersResponse,
@@ -21,7 +28,10 @@ import {
   UpdateProjectRequest,
 } from '@latex-cloud/shared';
 import { CurrentUser } from '../auth/current-user.decorator';
+import { ApiException } from '../common/api-exception';
+import { contentDisposition } from '../common/content-disposition';
 import { ZodPipe } from '../common/zod.pipe';
+import { FilesService } from './files.service';
 import { ProjectAccessService } from './project-access.service';
 import { ProjectsService } from './projects.service';
 
@@ -30,6 +40,7 @@ export class ProjectsController {
   constructor(
     private readonly projects: ProjectsService,
     private readonly access: ProjectAccessService,
+    private readonly files: FilesService,
   ) {}
 
   @Get()
@@ -43,6 +54,40 @@ export class ProjectsController {
     @Body(new ZodPipe(CreateProjectRequest)) body: CreateProjectRequest,
   ): Promise<ProjectSummary> {
     return this.projects.create(user.id, body);
+  }
+
+  /** Multipart: `file` (ZIP) and optional `name`. */
+  @Post('import')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_ZIP_BYTES, files: 1, fields: 4 },
+      // Browsers send UTF-8 file names; busboy defaults to latin1.
+      defParamCharset: 'utf8',
+    }),
+  )
+  importZip(
+    @CurrentUser() user: SessionUser,
+    @UploadedFile() file: Express.Multer.File | undefined,
+    @Body() body: Record<string, unknown>,
+  ): Promise<ImportProjectResponse> {
+    if (!file)
+      throw new ApiException('VALIDATION_FAILED', 'Attach a .zip file.', HttpStatus.BAD_REQUEST);
+    const name = typeof body.name === 'string' ? body.name : undefined;
+    return this.projects.importZip(user.id, file.buffer, file.originalname, name);
+  }
+
+  @Get(':projectId/export.zip')
+  async exportZip(
+    @CurrentUser() user: SessionUser,
+    @Param('projectId') projectId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const { stream, name } = await this.files.exportZip(user.id, projectId);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', contentDisposition('attachment', `${name}.zip`));
+    res.setHeader('Cache-Control', 'private, no-store');
+    stream.on('error', () => res.destroy());
+    stream.pipe(res);
   }
 
   @Get(':projectId')

@@ -6,14 +6,14 @@ computer science. Independent codebase (no Overleaf CE code — see
 
 > **Status: single-author vertical slice.** Sign in, create a project from a
 > template, share it with owner/editor/viewer roles, edit `.tex`/`.bib` files in
-> CodeMirror with autosave, compile in a per-job Docker sandbox, read the PDF
-> and jump from errors to their line. Uploads/ZIP import and real-time
-> collaboration are **not implemented yet**. **Trusted local use only** — see
+> CodeMirror with autosave, upload figures/fonts, import and export ZIPs,
+> compile in a per-job Docker sandbox, read the PDF and jump from errors to
+> their line. Real-time collaboration is **not implemented yet**. **Trusted local use only** — see
 > [compile sandbox security](docs/security/compile-sandbox.md).
 
 Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
 [`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
-[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [next: PR 5 proposal](docs/product/pr-5-proposal.md)
+[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [PR 5 notes](docs/product/pr-5-proposal.md) · [next: Phase 2 proposal](docs/product/phase-2-collaboration-proposal.md)
 
 ## Quick start (one command)
 
@@ -198,6 +198,24 @@ docs/                    architecture (spec + ADRs), security, product
 - **Templates:** new projects start from Article, Mathematics, Computer science
   or Blank; seeded demo projects have files.
 - **Layout:** resizable file / source / PDF / problems panes, remembered per browser.
+
+## What PR 5 delivers (files, uploads, ZIP)
+
+- **Uploads** (button or drag-and-drop onto the file tree): `.tex`/`.bib`/… as
+  editable text (must be UTF-8), and figures/fonts as binary — PNG, JPEG, PDF,
+  EPS, TTF, OTF. Binary content must match its extension's file signature, so
+  renamed scripts or polyglots are rejected. Existing names ask before replacing.
+- **Preview**: images and PDFs open in the source pane; everything can be
+  downloaded. Raw files are served with `Content-Security-Policy: sandbox`.
+- **Import ZIP** (dashboard): Overleaf/GitHub-style archives; a single
+  top-level folder is stripped, the main file and engine (fontspec →
+  XeLaTeX, Lua code → LuaLaTeX) are detected, unsupported entries and build
+  outputs are skipped and listed. Archives with path traversal, absolute
+  paths, case-insensitive duplicates, too many entries or a decompression-bomb
+  ratio are rejected as a whole.
+- **Download ZIP** of the whole project (any member).
+- Binary files are part of every compile revision, so `\includegraphics` works.
+- Limits: 50 MB per file, 150 MB per project, 100 MB per ZIP, 1000 files.
 
 ## Compile pipeline
 

@@ -9,6 +9,7 @@ import {
   ProjectFileListResponse,
   ProjectSummary,
   type ProjectFile as ProjectFileT,
+  UploadFileResponse,
 } from '@latex-cloud/shared';
 import {
   Alert,
@@ -25,6 +26,7 @@ import { ApiError, apiFetch } from '../../../lib/api';
 import type { SaveStatus } from '../../../lib/editor/file-session';
 import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
+import { AssetPreview } from './AssetPreview';
 import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
 import { PdfViewer } from './PdfViewer';
@@ -84,6 +86,8 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const source = useRef<SourceEditorHandle>(null);
   const shortcuts = useRef<HTMLDialogElement>(null);
   const [jumpTo, setJumpTo] = useState<{ line: number; nonce: number } | null>(null);
+  /** Bumped when the open file is replaced by an upload, to reload the editor. */
+  const [reloadNonce, setReloadNonce] = useState(0);
   /** Saves since the PDF on screen was built: the PDF may be out of date. */
   const [editedSinceCompile, setEditedSinceCompile] = useState(false);
 
@@ -292,6 +296,27 @@ export function EditorShell({ projectId }: { projectId: string }) {
           if (f.id === selectedId)
             setSelectedId(r?.files.find((x) => x.path === project.rootFile)?.id ?? null);
         }}
+        exportUrl={`${base}/export.zip`}
+        upload={async (file, path, overwrite) => {
+          await source.current?.flush(); // replacing the open file must not race a pending save
+          const form = new FormData();
+          form.set('path', path);
+          if (overwrite) form.set('overwrite', 'true');
+          form.set('file', file, file.name);
+          try {
+            const r = await apiFetch(`${base}/files/upload`, UploadFileResponse, {
+              method: 'POST',
+              body: form,
+            });
+            await reloadFiles();
+            if (r.replaced && r.file.id === selectedId) setReloadNonce((n) => n + 1);
+            if (!r.replaced) openFile(r.file);
+            return 'ok';
+          } catch (e) {
+            if (e instanceof ApiError && e.status === 409 && !overwrite) return 'conflict';
+            throw e;
+          }
+        }}
         onSetRoot={async (f) => {
           const p = await apiFetch(base, ProjectSummary, {
             method: 'PATCH',
@@ -306,10 +331,12 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const editorPanel = panel(
     'source',
     selected ? <span className="panel__path">{selected.path}</span> : 'Source',
-    selected ? (
+    selected && selected.kind === 'binary' ? (
+      <AssetPreview key={selected.id + selected.sha256} projectId={project.id} file={selected} />
+    ) : selected ? (
       <SourceEditor
         ref={source}
-        key={selected.id}
+        key={`${selected.id}:${reloadNonce}`}
         projectId={project.id}
         file={selected}
         readOnly={!canWrite}

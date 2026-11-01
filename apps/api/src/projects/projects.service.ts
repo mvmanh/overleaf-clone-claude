@@ -1,6 +1,13 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { type Kysely, sql } from 'kysely';
-import { isTexRoot } from '@latex-cloud/shared';
+import {
+  type ImportProjectResponse,
+  isTexRoot,
+  MAX_FILES_PER_PROJECT,
+  MAX_PROJECT_BYTES,
+  MAX_TEXT_FILE_BYTES,
+  MAX_UPLOAD_BYTES,
+} from '@latex-cloud/shared';
 import type {
   AssignableRole,
   CreateProjectRequest,
@@ -12,7 +19,12 @@ import type {
 import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
+import { randomUUID } from 'node:crypto';
+import { BLOB_STORAGE, type BlobStorage } from '../storage/blob-storage';
 import { recordAudit } from './audit';
+import { classifyFile, contentTypeFor } from './file-types';
+import { fileBlobKey } from './files.service';
+import { detectEngine, detectRootFile, readProjectZip, ZipRejectedError } from './zip-import';
 import { sha256Hex } from './hash';
 import { templateFiles } from './templates';
 import { isUuid, ProjectAccessService } from './project-access.service';
@@ -24,7 +36,122 @@ export class ProjectsService {
   constructor(
     @Inject(DB) private readonly db: Kysely<Database>,
     private readonly access: ProjectAccessService,
+    @Inject(BLOB_STORAGE) private readonly blobs: BlobStorage,
   ) {}
+
+  /**
+   * Creates a project from an uploaded ZIP (e.g. an Overleaf export). The
+   * archive is untrusted: structural attacks reject it, unsupported entries
+   * are skipped and reported back.
+   */
+  async importZip(
+    userId: string,
+    zip: Buffer,
+    archiveName: string,
+    requestedName?: string,
+  ): Promise<ImportProjectResponse> {
+    let read;
+    try {
+      read = await readProjectZip(zip, {
+        maxEntries: MAX_FILES_PER_PROJECT,
+        maxFileBytes: MAX_UPLOAD_BYTES,
+        maxTotalBytes: MAX_PROJECT_BYTES,
+        maxRatio: 200,
+      });
+    } catch (err) {
+      if (err instanceof ZipRejectedError) {
+        throw new ApiException('VALIDATION_FAILED', err.message, HttpStatus.BAD_REQUEST);
+      }
+      throw err;
+    }
+
+    const skipped = [...read.skipped];
+    const files: { path: string; kind: 'text' | 'binary'; text: string | null; bytes: Buffer }[] =
+      [];
+    for (const f of read.files) {
+      const c = classifyFile(f.path, f.content);
+      if (!c.ok) skipped.push({ path: f.path, reason: c.reason });
+      else if (c.kind === 'text' && f.content.byteLength > MAX_TEXT_FILE_BYTES)
+        skipped.push({ path: f.path, reason: 'text file is larger than 2 MB' });
+      else
+        files.push({
+          path: f.path,
+          kind: c.kind,
+          text: c.kind === 'text' ? c.text : null,
+          bytes: f.content,
+        });
+    }
+    if (files.length === 0) {
+      throw new ApiException(
+        'VALIDATION_FAILED',
+        'The archive contains no supported files.',
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+
+    const rootFile = detectRootFile(
+      files
+        .filter((f) => f.kind === 'text')
+        .map((f) => ({ path: f.path, content: Buffer.from(f.text!) })),
+    );
+    const engine = detectEngine(rootFile ? files.find((f) => f.path === rootFile)!.text : null);
+    const fallbackName = archiveName
+      .replace(/\.zip$/i, '')
+      .split('')
+      .filter((c) => c.charCodeAt(0) >= 0x20)
+      .join('')
+      .trim();
+    const name = (requestedName?.trim() || fallbackName || 'Imported project').slice(0, 200);
+
+    // Blobs first (content-addressed, idempotent), then all rows atomically.
+    const projectId = randomUUID();
+    for (const f of files) {
+      if (f.kind !== 'binary') continue;
+      const key = fileBlobKey(projectId, sha256Hex(f.bytes));
+      if (!(await this.blobs.exists(key)))
+        await this.blobs.put(key, f.bytes, contentTypeFor(f.path));
+    }
+    await this.db.transaction().execute(async (trx) => {
+      await trx
+        .insertInto('projects')
+        .values({ id: projectId, owner_id: userId, name, engine, root_file_path: rootFile })
+        .execute();
+      await trx
+        .insertInto('project_members')
+        .values({ project_id: projectId, user_id: userId, role: 'owner', accepted_at: new Date() })
+        .execute();
+      for (let i = 0; i < files.length; i += 200) {
+        await trx
+          .insertInto('project_files')
+          .values(
+            files.slice(i, i + 200).map((f) => ({
+              project_id: projectId,
+              path: f.path,
+              kind: f.kind,
+              content_text: f.text,
+              blob_key: f.kind === 'binary' ? fileBlobKey(projectId, sha256Hex(f.bytes)) : null,
+              size_bytes: f.bytes.byteLength,
+              sha256: f.kind === 'text' ? sha256Hex(f.text!) : sha256Hex(f.bytes),
+              created_by: userId,
+              updated_by: userId,
+            })),
+          )
+          .execute();
+      }
+      await recordAudit(trx, {
+        projectId,
+        actorId: userId,
+        action: 'project.imported',
+        metadata: { files: files.length, skipped: skipped.length, rootFile, engine },
+      });
+    });
+    return {
+      project: await this.getForUser(userId, projectId),
+      importedFiles: files.length,
+      skipped,
+      detected: { rootFile, engine },
+    };
+  }
 
   private baseQuery(userId: string) {
     return this.db

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   CreateFileRequest,
+  isAllowedPath,
+  isBinaryPath,
   extensionOf,
   isTexRoot,
   isTextPath,
@@ -50,5 +52,16 @@ describe('file contracts', () => {
     expect(
       SaveFileRequest.safeParse({ content: 'ê'.repeat(MAX_TEXT_FILE_BYTES / 2 + 1) }).success,
     ).toBe(false);
+  });
+});
+
+describe('binary allow-list', () => {
+  it('accepts figures and fonts, rejects executables and unknown types', () => {
+    for (const p of ['fig/plot.png', 'photo.JPG', 'diagram.pdf', 'logo.eps', 'fonts/Inter.otf']) {
+      expect(isBinaryPath(p), p).toBe(true);
+    }
+    for (const p of ['run.sh', 'a.exe', 'x.svg', 'archive.zip', 'Makefile'])
+      expect(isAllowedPath(p), p).toBe(false);
+    expect(isAllowedPath('main.tex')).toBe(true);
   });
 });
