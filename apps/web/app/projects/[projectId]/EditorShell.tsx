@@ -2,14 +2,33 @@
 
 import Link from 'next/link';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
-import { ProjectSummary } from '@latex-cloud/shared';
-import { Alert, Badge, Button, EmptyState, Kbd, Spinner, ThemeToggle } from '@latex-cloud/ui';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import {
+  can,
+  ProjectFile,
+  ProjectFileListResponse,
+  ProjectSummary,
+  type ProjectFile as ProjectFileT,
+} from '@latex-cloud/shared';
+import {
+  Alert,
+  Badge,
+  Button,
+  EmptyState,
+  Kbd,
+  Spinner,
+  ThemeToggle,
+  type Tone,
+} from '@latex-cloud/ui';
 import { useSession } from '../../../components/useSession';
 import { ApiError, apiFetch } from '../../../lib/api';
+import type { SaveStatus } from '../../../lib/editor/file-session';
 import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
+import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
 import { ShareDialog } from './ShareDialog';
+import { SourceEditor, type SourceEditorHandle } from './SourceEditor';
 
 type PanelId = 'tree' | 'source' | 'pdf' | 'issues';
 
@@ -26,17 +45,41 @@ type State =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; project: ProjectSummary };
 
-/**
- * Editor layout skeleton (PR 1). Panels are real, focusable regions with
- * keyboard navigation; their contents arrive in later milestones and say so
- * explicitly rather than pretending to work.
- */
+const SAVE_LABEL: Record<SaveStatus['kind'], [string, Tone]> = {
+  saved: ['Saved', 'success'],
+  dirty: ['Unsaved changes', 'warning'],
+  saving: ['Saving…', 'info'],
+  conflict: ['Conflict', 'danger'],
+  error: ['Not saved', 'danger'],
+};
+
+const lastOpenedKey = (projectId: string) => `lc-last-file:${projectId}`;
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 900px)');
+    const update = () => setNarrow(mq.matches);
+    update();
+    mq.addEventListener('change', update);
+    return () => mq.removeEventListener('change', update);
+  }, []);
+  return narrow;
+}
+
+/** Project workspace: file tree, source editor, PDF and problems panels. */
 export function EditorShell({ projectId }: { projectId: string }) {
   const { user } = useSession();
+  const narrow = useNarrow();
   const [openDialog, setOpenDialog] = useState<'share' | 'settings' | null>(null);
   const [state, setState] = useState<State>({ kind: 'loading' });
+  const [files, setFiles] = useState<ProjectFileT[] | null>(null);
+  const [filesError, setFilesError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus | null>(null);
   const refs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
-  const dialog = useRef<HTMLDialogElement>(null);
+  const source = useRef<SourceEditorHandle>(null);
+  const shortcuts = useRef<HTMLDialogElement>(null);
 
   const reloadProject = useCallback(() => {
     apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}`, ProjectSummary)
@@ -52,9 +95,72 @@ export function EditorShell({ projectId }: { projectId: string }) {
       });
   }, [projectId]);
 
+  const reloadFiles = useCallback(async () => {
+    try {
+      const r = await apiFetch(
+        `/api/v1/projects/${encodeURIComponent(projectId)}/files`,
+        ProjectFileListResponse,
+      );
+      setFiles(r.files);
+      setFilesError(null);
+      return r;
+    } catch (e) {
+      if (!(e instanceof ApiError && (e.status === 401 || e.status === 404))) {
+        setFilesError(e instanceof ApiError ? e.message : 'Could not load files.');
+      }
+      return null;
+    }
+  }, [projectId]);
+
   useEffect(reloadProject, [reloadProject]);
 
-  const focusPanel = useCallback((id: PanelId) => refs.current[id]?.focus(), []);
+  // Initial file selection: last opened (this browser), else the main file.
+  useEffect(() => {
+    void reloadFiles().then((r) => {
+      if (!r) return;
+      let remembered: string | null = null;
+      try {
+        remembered = localStorage.getItem(lastOpenedKey(projectId));
+      } catch {
+        /* storage unavailable */
+      }
+      const pick =
+        r.files.find((f) => f.id === remembered) ??
+        r.files.find((f) => f.path === r.rootFile) ??
+        r.files.find((f) => f.kind === 'text') ??
+        null;
+      setSelectedId(pick?.id ?? null);
+    });
+  }, [projectId, reloadFiles]);
+
+  const openFile = useCallback(
+    (f: ProjectFileT) => {
+      setSelectedId(f.id);
+      try {
+        localStorage.setItem(lastOpenedKey(projectId), f.id);
+      } catch {
+        /* ignore */
+      }
+    },
+    [projectId],
+  );
+
+  // Warn before leaving with edits the server does not have.
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (source.current?.hasUnsavedChanges()) {
+        void source.current.flush();
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, []);
+
+  const focusPanel = useCallback((id: PanelId) => {
+    if (id === 'source' && source.current) source.current.focus();
+    else refs.current[id]?.focus();
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -70,7 +176,7 @@ export function EditorShell({ projectId }: { projectId: string }) {
         target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName));
       if (e.key === '?' && !typing) {
         e.preventDefault();
-        dialog.current?.showModal();
+        shortcuts.current?.showModal();
       }
     };
     window.addEventListener('keydown', onKey);
@@ -102,11 +208,14 @@ export function EditorShell({ projectId }: { projectId: string }) {
   }
 
   const { project } = state;
-  const canEdit = project.role !== 'viewer';
-  const panel = (id: PanelId, title: string, children: ReactNode, extra?: ReactNode) => (
+  const canWrite = can(project.role, 'files:write');
+  const selected = files?.find((f) => f.id === selectedId) ?? null;
+  const base = `/api/v1/projects/${project.id}`;
+
+  const panel = (id: PanelId, title: ReactNode, children: ReactNode, extra?: ReactNode) => (
     <section
       className={`panel panel--${id}`}
-      aria-label={title}
+      aria-label={typeof title === 'string' ? title : PANELS.find((p) => p.id === id)?.label}
       tabIndex={-1}
       ref={(el) => {
         refs.current[id] = el;
@@ -122,6 +231,109 @@ export function EditorShell({ projectId }: { projectId: string }) {
     </section>
   );
 
+  const tree = panel(
+    'tree',
+    'Files',
+    files === null ? (
+      filesError ? (
+        <Alert tone="danger">{filesError}</Alert>
+      ) : (
+        <div className="editor__center">
+          <Spinner label="Loading files" />
+        </div>
+      )
+    ) : (
+      <FileTree
+        files={files}
+        rootFile={project.rootFile}
+        selectedId={selectedId}
+        canWrite={canWrite}
+        onOpen={openFile}
+        onCreate={async (path) => {
+          const f = await apiFetch(`${base}/files`, ProjectFile, {
+            method: 'POST',
+            body: JSON.stringify({ path }),
+          });
+          await reloadFiles();
+          openFile(f);
+        }}
+        onRename={async (f, path) => {
+          await source.current?.flush();
+          await apiFetch(`${base}/files/${f.id}`, ProjectFile, {
+            method: 'PATCH',
+            body: JSON.stringify({ path }),
+          });
+          await reloadFiles();
+          reloadProject(); // root path may have moved
+        }}
+        onDelete={async (f) => {
+          await apiFetch(`${base}/files/${f.id}`, null, { method: 'DELETE' });
+          const r = await reloadFiles();
+          if (f.id === selectedId)
+            setSelectedId(r?.files.find((x) => x.path === project.rootFile)?.id ?? null);
+        }}
+        onSetRoot={async (f) => {
+          const p = await apiFetch(base, ProjectSummary, {
+            method: 'PATCH',
+            body: JSON.stringify({ rootFile: f.path }),
+          });
+          setState({ kind: 'ready', project: p });
+        }}
+      />
+    ),
+  );
+
+  const editorPanel = panel(
+    'source',
+    selected ? <span className="panel__path">{selected.path}</span> : 'Source',
+    selected ? (
+      <SourceEditor
+        ref={source}
+        key={selected.id}
+        projectId={project.id}
+        file={selected}
+        readOnly={!canWrite}
+        onStatus={setSaveStatus}
+        onSaved={(saved) => setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs)}
+      />
+    ) : (
+      <EmptyState title={files?.length ? 'No file open' : 'No files yet'}>
+        {files?.length
+          ? 'Choose a file in the tree.'
+          : canWrite
+            ? 'Create a file to start writing.'
+            : 'This project is empty.'}
+      </EmptyState>
+    ),
+    canWrite ? null : (
+      <Badge tone="neutral" dot={false}>
+        read-only
+      </Badge>
+    ),
+  );
+
+  const pdfPanel = panel(
+    'pdf',
+    'PDF',
+    <EmptyState title="No PDF yet">
+      Compiling from the editor is the next milestone. A failed compile will never replace the last
+      good PDF.
+    </EmptyState>,
+  );
+
+  const issuesPanel = panel(
+    'issues',
+    'Problems',
+    <EmptyState title="No compile has run">
+      Errors and warnings will be listed here with click-to-line.
+    </EmptyState>,
+    <Badge tone="neutral" dot={false}>
+      0
+    </Badge>,
+  );
+
+  const [saveLabel, saveTone] = saveStatus ? SAVE_LABEL[saveStatus.kind] : ['', 'neutral' as Tone];
+
   return (
     <main id="main" className="editor">
       <div className="editor__top">
@@ -131,13 +343,20 @@ export function EditorShell({ projectId }: { projectId: string }) {
         <h1 className="editor__project-name" data-testid="project-name">
           {project.name}
         </h1>
-        <Badge tone={canEdit ? 'info' : 'neutral'} dot={false}>
+        <Badge tone={canWrite ? 'info' : 'neutral'} dot={false}>
           {project.role}
         </Badge>
         <span className="editor__spacer" />
-        <Badge tone="neutral" title="Real-time sync is not implemented yet (Phase 2).">
-          Sync: offline
-        </Badge>
+        {saveStatus && selected ? (
+          <span data-testid="save-status" aria-live="polite">
+            <Badge
+              tone={saveTone}
+              title={saveStatus.kind === 'error' ? saveStatus.message : undefined}
+            >
+              {saveLabel}
+            </Badge>
+          </span>
+        ) : null}
         <Badge tone="neutral" dot={false}>
           {ENGINE_LABELS[project.engine]}
         </Badge>
@@ -145,14 +364,14 @@ export function EditorShell({ projectId }: { projectId: string }) {
           variant="primary"
           size="sm"
           disabled
-          title="Compilation is wired up in Phase 1 (revision manifest + job queue + sandbox executor)."
+          title="Compiling from the editor is the next milestone."
         >
           Compile
         </Button>
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => dialog.current?.showModal()}
+          onClick={() => shortcuts.current?.showModal()}
           aria-label="Keyboard shortcuts"
         >
           <Kbd>?</Kbd>
@@ -180,44 +399,45 @@ export function EditorShell({ projectId }: { projectId: string }) {
         onUpdated={(p) => setState({ kind: 'ready', project: p })}
       />
 
-      {panel(
-        'tree',
-        'Files',
-        <EmptyState title="No files yet">
-          The project file tree, uploads and ZIP import arrive in the next milestones.
-        </EmptyState>,
-      )}
-      {panel(
-        'source',
-        'Source',
-        <EmptyState title="Editor not available yet">
-          CodeMirror 6 editing with LaTeX highlighting lands in PR 3; collaborative editing in Phase
-          2.
-        </EmptyState>,
-      )}
-      {panel(
-        'pdf',
-        'PDF',
-        <EmptyState title="No PDF yet">
-          Compiled output will appear here. A failed compile will never replace the last good PDF.
-        </EmptyState>,
-      )}
-      {panel(
-        'issues',
-        'Problems',
-        <EmptyState title="No compile has run">
-          Errors and warnings will be listed here with click-to-line.
-        </EmptyState>,
-        <Badge tone="neutral" dot={false}>
-          0
-        </Badge>,
-      )}
+      <div className="editor__workspace">
+        <PanelGroup
+          direction={narrow ? 'vertical' : 'horizontal'}
+          autoSaveId={narrow ? 'lc-layout-outer-narrow' : 'lc-layout-outer'}
+        >
+          <Panel id="tree" order={1} defaultSize={narrow ? 20 : 18} minSize={10} collapsible>
+            {tree}
+          </Panel>
+          <PanelResizeHandle className="resize-handle" />
+          <Panel id="main" order={2} minSize={30}>
+            <PanelGroup direction="vertical" autoSaveId="lc-layout-main">
+              <Panel id="work" order={1} minSize={25}>
+                <PanelGroup
+                  direction={narrow ? 'vertical' : 'horizontal'}
+                  autoSaveId={narrow ? 'lc-layout-work-narrow' : 'lc-layout-work'}
+                >
+                  <Panel id="source" order={1} minSize={20}>
+                    {editorPanel}
+                  </Panel>
+                  <PanelResizeHandle className="resize-handle" />
+                  <Panel id="pdf" order={2} minSize={15} collapsible>
+                    {pdfPanel}
+                  </Panel>
+                </PanelGroup>
+              </Panel>
+              <PanelResizeHandle className="resize-handle" />
+              <Panel id="issues" order={2} defaultSize={20} minSize={8} collapsible>
+                {issuesPanel}
+              </Panel>
+            </PanelGroup>
+          </Panel>
+        </PanelGroup>
+      </div>
 
       <dialog
-        ref={dialog}
+        ref={shortcuts}
         className="shortcuts"
         aria-labelledby="shortcuts-title"
-        onClick={(e) => e.target === dialog.current && dialog.current?.close()}
+        onClick={(e) => e.target === shortcuts.current && shortcuts.current?.close()}
       >
         <h2 id="shortcuts-title">Keyboard shortcuts</h2>
         <table>
@@ -230,6 +450,30 @@ export function EditorShell({ projectId }: { projectId: string }) {
                 </td>
               </tr>
             ))}
+            <tr>
+              <td>Save now (autosave is on)</td>
+              <td>
+                <Kbd>Ctrl/⌘</Kbd> <Kbd>S</Kbd>
+              </td>
+            </tr>
+            <tr>
+              <td>Find / replace in file</td>
+              <td>
+                <Kbd>Ctrl/⌘</Kbd> <Kbd>F</Kbd>
+              </td>
+            </tr>
+            <tr>
+              <td>Autocomplete LaTeX commands</td>
+              <td>
+                <Kbd>\</Kbd> or <Kbd>Ctrl</Kbd> <Kbd>Space</Kbd>
+              </td>
+            </tr>
+            <tr>
+              <td>Rename / delete selected file</td>
+              <td>
+                <Kbd>F2</Kbd> / <Kbd>Del</Kbd>
+              </td>
+            </tr>
             <tr>
               <td>Change theme</td>
               <td>

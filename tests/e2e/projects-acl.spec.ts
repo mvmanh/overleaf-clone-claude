@@ -1,18 +1,5 @@
-import { type Browser, expect, type Page, test } from '@playwright/test';
-
-const PASSWORD = process.env.SEED_USER_PASSWORD ?? 'latex-cloud-dev-password';
-
-async function newSession(browser: Browser, email: string): Promise<Page> {
-  const page = await (await browser.newContext()).newPage();
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign in' }).click();
-  await expect(page).toHaveURL(/\/projects$/);
-  // Rendered client-side after hydration: safe to interact from here on.
-  await expect(page.getByTestId('current-user')).toBeVisible();
-  return page;
-}
+import { expect, test } from '@playwright/test';
+import { newSession } from './helpers';
 
 test('create, rename, share as viewer, enforce viewer limits, delete', async ({ browser }) => {
   const stamp = Date.now().toString(36);

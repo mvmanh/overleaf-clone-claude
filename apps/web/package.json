@@ -10,11 +10,21 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/legacy-modes": "6.5.5",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
     "@latex-cloud/shared": "workspace:*",
     "@latex-cloud/ui": "workspace:*",
+    "@lezer/highlight": "1.2.5",
+    "codemirror": "6.0.2",
     "next": "15.5.28",
     "react": "19.2.9",
     "react-dom": "19.2.9",
+    "react-resizable-panels": "3.0.6",
     "zod": "3.25.76"
   },
   "devDependencies": {

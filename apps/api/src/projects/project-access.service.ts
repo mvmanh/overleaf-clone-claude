@@ -55,15 +55,22 @@ export class ProjectAccessService {
     userId: string,
     projectId: string,
     action: ProjectAction,
+    /**
+     * `update` serialises membership/ownership/settings changes. File writes use
+     * `share`: they may run concurrently with each other but still wait for (and
+     * observe) any in-flight membership change.
+     */
+    mode: 'update' | 'share' = 'update',
   ): Promise<ProjectRole> {
     if (!isUuid(projectId)) throw notFound('Project');
-    const project = await trx
+    const base = trx
       .selectFrom('projects')
       .select('id')
       .where('id', '=', projectId)
-      .where('deleted_at', 'is', null)
-      .forUpdate()
-      .executeTakeFirst();
+      .where('deleted_at', 'is', null);
+    const project = await (
+      mode === 'update' ? base.forUpdate() : base.forShare()
+    ).executeTakeFirst();
     if (!project) throw notFound('Project');
     const member = await trx
       .selectFrom('project_members')

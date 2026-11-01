@@ -1,19 +1,19 @@
 .editor {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   height: 100vh;
-  grid-template-columns: 240px minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-rows: 48px minmax(0, 1fr) 180px;
-  grid-template-areas:
-    'top top top'
-    'tree source pdf'
-    'tree issues issues';
-  background: var(--lc-border);
-  gap: 1px;
+  background: var(--lc-bg);
+}
+.editor__workspace {
+  flex: 1;
+  min-height: 0;
 }
 .editor__top {
-  grid-area: top;
   display: flex;
+  flex: none;
   align-items: center;
+  height: 48px;
+  border-bottom: 1px solid var(--lc-border);
   gap: var(--lc-space-3);
   padding: 0 var(--lc-space-4);
   background: var(--lc-surface);
@@ -56,28 +56,23 @@
   flex: 1;
   overflow: auto;
 }
-.panel--tree {
-  grid-area: tree;
-}
-.panel--source {
-  grid-area: source;
-}
 .panel--source .panel__body {
-  background: var(--lc-surface-sunken);
-}
-.panel--pdf {
-  grid-area: pdf;
+  overflow: hidden;
 }
 .panel--pdf .panel__body {
   background: var(--lc-surface-sunken);
 }
-.panel--issues {
-  grid-area: issues;
+.panel__path {
+  font-family: var(--lc-font-mono);
+  font-size: var(--lc-text-xs);
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--lc-text-muted);
 }
 .editor__center {
-  grid-column: 1 / -1;
-  grid-row: 2 / -1;
   display: grid;
+  flex: 1;
+  min-height: 120px;
   place-items: center;
   background: var(--lc-surface);
 }
@@ -109,19 +104,127 @@
   text-align: right;
 }
 
-/* Tablet / phone: read-first stacked layout. Full editing is desktop-optimised. */
 @media (max-width: 900px) {
-  .editor {
-    height: auto;
-    min-height: 100vh;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto 160px 50vh 50vh 160px;
-    grid-template-areas: 'top' 'tree' 'source' 'pdf' 'issues';
-  }
   .editor__top {
     flex-wrap: wrap;
+    height: auto;
     padding: var(--lc-space-2) var(--lc-space-4);
   }
+}
+
+.resize-handle {
+  flex: 0 0 4px;
+  background: var(--lc-border);
+  transition: background var(--lc-transition);
+}
+.resize-handle[data-resize-handle-state='hover'],
+.resize-handle[data-resize-handle-state='drag'] {
+  background: var(--lc-accent);
+}
+.resize-handle:focus-visible {
+  outline: 2px solid var(--lc-focus);
+  outline-offset: -1px;
+}
+
+.panel {
+  height: 100%;
+}
+
+.source-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.source-editor__host {
+  flex: 1;
+  min-height: 0;
+}
+.source-editor__host .cm-editor {
+  height: 100%;
+}
+.source-editor__center {
+  display: grid;
+  flex: 1;
+  place-items: center;
+}
+.source-editor__banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--lc-space-2);
+  padding: var(--lc-space-2) var(--lc-space-3);
+  border-bottom: 1px solid color-mix(in srgb, var(--lc-danger) 30%, transparent);
+  background: var(--lc-danger-soft);
+  color: var(--lc-danger);
+  font-size: var(--lc-text-sm);
+}
+.source-editor__banner span {
+  flex: 1;
+  min-width: 200px;
+}
+
+.tree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lc-space-2);
+  padding: var(--lc-space-2) 0;
+}
+.tree__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lc-space-1);
+  padding: 0 var(--lc-space-2);
+}
+.tree__list,
+.tree__list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tree__row {
+  display: flex;
+  align-items: center;
+  gap: var(--lc-space-2);
+  width: 100%;
+  height: 28px;
+  padding-right: var(--lc-space-2);
+  border: none;
+  background: transparent;
+  color: var(--lc-text);
+  font: inherit;
+  font-size: var(--lc-text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+.tree__row:hover {
+  background: var(--lc-surface-sunken);
+}
+.tree__row[aria-current='true'] {
+  background: var(--lc-accent-soft);
+  color: var(--lc-accent);
+  font-weight: 550;
+}
+.tree__row:focus-visible {
+  outline-offset: -2px;
+}
+.tree__row--folder {
+  color: var(--lc-text-muted);
+}
+.tree__icon {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  font-family: var(--lc-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--lc-text-subtle);
+}
+.tree__name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .share-invite {

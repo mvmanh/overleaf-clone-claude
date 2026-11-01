@@ -43,6 +43,7 @@ describe('project mutation contracts', () => {
     expect(CreateProjectRequest.parse({ name: '  Thesis  ' })).toEqual({
       name: 'Thesis',
       engine: 'pdflatex',
+      template: 'article',
     });
   });
 

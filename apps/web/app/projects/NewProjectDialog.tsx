@@ -7,6 +7,13 @@ import { Alert, Button, Dialog, SelectField, TextField } from '@latex-cloud/ui';
 import { ApiError, apiFetch } from '../../lib/api';
 import { ENGINE_OPTIONS } from '../../lib/format';
 
+const TEMPLATE_OPTIONS = [
+  { value: 'article', label: 'Article' },
+  { value: 'math', label: 'Mathematics (theorems, amsart)' },
+  { value: 'cs', label: 'Computer science (algorithms, biblatex)' },
+  { value: 'blank', label: 'Blank' },
+] as const;
+
 export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -20,7 +27,11 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
     try {
       const project = await apiFetch('/api/v1/projects', ProjectSummary, {
         method: 'POST',
-        body: JSON.stringify({ name: form.get('name'), engine: form.get('engine') }),
+        body: JSON.stringify({
+          name: form.get('name'),
+          engine: form.get('engine'),
+          template: form.get('template') ?? undefined,
+        }),
       });
       router.push(`/projects/${project.id}`);
     } catch (err) {
@@ -47,6 +58,12 @@ export function NewProjectDialog({ open, onClose }: { open: boolean; onClose: ()
           maxLength={200}
           autoFocus
           placeholder="e.g. Topology notes"
+        />
+        <SelectField
+          label="Template"
+          name="template"
+          defaultValue="article"
+          options={TEMPLATE_OPTIONS}
         />
         <SelectField
           label="Compiler"

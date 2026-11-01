@@ -1,6 +1,15 @@
-# PR 3 proposal — Editor shell: file tree + CodeMirror 6 (single author)
+# PR 3 — Editor shell: file tree + CodeMirror 6 (single author)
 
-Not started. Next milestone per ARCHITECTURE.md §15 ("Editor shell + CodeMirror + local project file tree + responsive split panes").
+**Status: implemented.** Notes vs. the proposal:
+
+- Save is `PUT /projects/{id}/files/{fileId}/content` with `If-Match`; missing header → 428, stale → 412 (compare-and-swap in one `UPDATE … WHERE sha256 = $expected`).
+- Autosave (1 s debounce) + Ctrl/Cmd+S. The `FileSession` state machine (`apps/web/lib/editor/file-session.ts`) is unit-tested; a 412 stops saving and offers _Keep my version_ / _Load their version_.
+- Templates: article, math (amsart + theorems), cs (algorithms + biblatex + `references.bib`), blank. Titles are TeX-escaped.
+- The root file cannot be deleted; renaming it keeps it the root (must stay `.tex`).
+- Pane sizes persist per browser (`react-resizable-panels` `autoSaveId`), not per project.
+- Binary files/uploads are PR 4.
+
+Original proposal follows.
 
 ## Scope
 

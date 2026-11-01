@@ -61,6 +61,22 @@ export interface ProjectAuditEventsTable {
   created_at: Timestamp;
 }
 
+export interface ProjectFilesTable {
+  id: Generated<string>;
+  project_id: string;
+  path: string;
+  kind: 'text' | 'binary';
+  content_text: string | null;
+  blob_key: string | null;
+  size_bytes: number;
+  sha256: string;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: Timestamp;
+  updated_at: Timestamp;
+  deleted_at: Date | null;
+}
+
 export interface Database {
   users: UsersTable;
   user_password_credentials: UserPasswordCredentialsTable;
@@ -68,6 +84,7 @@ export interface Database {
   projects: ProjectsTable;
   project_members: ProjectMembersTable;
   project_audit_events: ProjectAuditEventsTable;
+  project_files: ProjectFilesTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

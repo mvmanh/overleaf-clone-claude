@@ -1,6 +1,8 @@
 import type { Kysely } from 'kysely';
-import type { ProjectRole, TexEngineName } from '@latex-cloud/shared';
+import type { ProjectRole, ProjectTemplate, TexEngineName } from '@latex-cloud/shared';
 import { PasswordHasher } from '../auth/password-hasher';
+import { sha256Hex } from '../projects/hash';
+import { templateFiles } from '../projects/templates';
 import type { Database } from './schema';
 
 export const SEED_USERS = [
@@ -16,6 +18,7 @@ export const SEED_PROJECTS: {
   name: string;
   engine: TexEngineName;
   owner: SeedEmail;
+  template: ProjectTemplate;
   members: { email: SeedEmail; role: Exclude<ProjectRole, 'owner'> }[];
 }[] = [
   {
@@ -23,6 +26,7 @@ export const SEED_PROJECTS: {
     name: 'Analytic Number Theory — Lecture Notes',
     engine: 'pdflatex',
     owner: 'alice@example.com',
+    template: 'math',
     members: [{ email: 'bob@example.com', role: 'editor' }],
   },
   {
@@ -30,6 +34,7 @@ export const SEED_PROJECTS: {
     name: 'Graph Algorithms Paper (ICALP draft)',
     engine: 'pdflatex',
     owner: 'bob@example.com',
+    template: 'cs',
     members: [{ email: 'alice@example.com', role: 'viewer' }],
   },
   {
@@ -37,6 +42,7 @@ export const SEED_PROJECTS: {
     name: 'Luận văn Thạc sĩ — Học máy',
     engine: 'xelatex',
     owner: 'carol@example.com',
+    template: 'article',
     members: [],
   },
 ];
@@ -76,6 +82,29 @@ export async function seedDatabase(db: Kysely<Database>, password: string): Prom
         })
         .onConflict((oc) => oc.column('id').doUpdateSet({ name: p.name, engine: p.engine }))
         .execute();
+      // Starter files only if the project has none (never clobber edits on re-seed).
+      const existing = await trx
+        .selectFrom('project_files')
+        .select('id')
+        .where('project_id', '=', p.id)
+        .executeTakeFirst();
+      if (!existing) {
+        await trx
+          .insertInto('project_files')
+          .values(
+            templateFiles(p.template, p.name, p.engine).map((f) => ({
+              project_id: p.id,
+              path: f.path,
+              kind: 'text' as const,
+              content_text: f.content,
+              size_bytes: Buffer.byteLength(f.content, 'utf8'),
+              sha256: sha256Hex(f.content),
+              created_by: ownerId,
+              updated_by: ownerId,
+            })),
+          )
+          .execute();
+      }
       const members = [{ email: p.owner, role: 'owner' as ProjectRole }, ...p.members];
       for (const m of members) {
         await trx

@@ -169,6 +169,21 @@ docs/                    architecture (spec + ADRs), security, product
 | `PATCH`  | `/api/v1/projects/{id}/members/{userId}`   | owner                    |
 | `DELETE` | `/api/v1/projects/{id}/members/{userId}`   | owner (or self to leave) |
 
+## What PR 3 delivers
+
+- **Editor:** CodeMirror 6 with LaTeX and BibTeX highlighting, bracket matching,
+  search/replace, LaTeX command/environment autocompletion with snippets,
+  light/dark syntax colours, read-only mode for viewers.
+- **Saving:** autosave + Ctrl/Cmd+S with optimistic concurrency (`If-Match`
+  content hash). Two tabs or two people editing the same file get an explicit
+  conflict choice instead of a silent overwrite.
+- **Files:** file tree with folders, create/rename/delete, "Set as main",
+  keyboard navigation (↑/↓, F2, Del). Path rules are shared by browser, API and
+  compiler (`packages/shared/src/paths.ts`).
+- **Templates:** new projects start from Article, Mathematics, Computer science
+  or Blank; seeded demo projects have files.
+- **Layout:** resizable file / source / PDF / problems panes, remembered per browser.
+
 ## Measured fixture timings (Docker executor, warm image)
 
 Measured on the development container used for PR 1 (4 vCPU). One run, not a

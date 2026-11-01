@@ -1,5 +1,6 @@
 import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { type Kysely, sql } from 'kysely';
+import { isTexRoot } from '@latex-cloud/shared';
 import type {
   AssignableRole,
   CreateProjectRequest,
@@ -12,6 +13,8 @@ import { ApiException, notFound } from '../common/api-exception';
 import { DB } from '../database/database.module';
 import type { Database } from '../database/schema';
 import { recordAudit } from './audit';
+import { sha256Hex } from './hash';
+import { templateFiles } from './templates';
 import { isUuid, ProjectAccessService } from './project-access.service';
 
 const conflict = (message: string) => new ApiException('CONFLICT', message, HttpStatus.CONFLICT);
@@ -36,6 +39,7 @@ export class ProjectsService {
         'p.engine',
         'p.created_at',
         'p.updated_at',
+        'p.root_file_path',
         'm.role',
         'o.id as owner_id',
         'o.display_name as owner_name',
@@ -58,6 +62,7 @@ export class ProjectsService {
       role: r.role,
       owner: { id: r.owner_id, displayName: r.owner_name },
       memberCount: Number(r.member_count ?? 1),
+      rootFile: r.root_file_path,
       createdAt: new Date(r.created_at).toISOString(),
       updatedAt: new Date(r.updated_at).toISOString(),
     };
@@ -95,11 +100,27 @@ export class ProjectsService {
         .insertInto('project_members')
         .values({ project_id: project.id, user_id: userId, role: 'owner', accepted_at: new Date() })
         .execute();
+      const files = templateFiles(req.template, req.name, req.engine);
+      await trx
+        .insertInto('project_files')
+        .values(
+          files.map((f) => ({
+            project_id: project.id,
+            path: f.path,
+            kind: 'text' as const,
+            content_text: f.content,
+            size_bytes: Buffer.byteLength(f.content, 'utf8'),
+            sha256: sha256Hex(f.content),
+            created_by: userId,
+            updated_by: userId,
+          })),
+        )
+        .execute();
       await recordAudit(trx, {
         projectId: project.id,
         actorId: userId,
         action: 'project.created',
-        metadata: { name: req.name, engine: req.engine },
+        metadata: { name: req.name, engine: req.engine, template: req.template },
       });
       return project.id;
     });
@@ -115,14 +136,31 @@ export class ProjectsService {
       await this.access.lockForAction(trx, userId, projectId, 'project:update');
       const before = await trx
         .selectFrom('projects')
-        .select(['name', 'engine'])
+        .select(['name', 'engine', 'root_file_path'])
         .where('id', '=', projectId)
         .executeTakeFirstOrThrow();
+      if (req.rootFile !== undefined) {
+        const root = await trx
+          .selectFrom('project_files')
+          .select('path')
+          .where('project_id', '=', projectId)
+          .where('path', '=', req.rootFile)
+          .where('deleted_at', 'is', null)
+          .executeTakeFirst();
+        if (!root || !isTexRoot(root.path)) {
+          throw new ApiException(
+            'VALIDATION_FAILED',
+            'The main file must be an existing .tex file in this project.',
+            HttpStatus.BAD_REQUEST,
+          );
+        }
+      }
       await trx
         .updateTable('projects')
         .set({
           ...(req.name !== undefined ? { name: req.name } : {}),
           ...(req.engine !== undefined ? { engine: req.engine } : {}),
+          ...(req.rootFile !== undefined ? { root_file_path: req.rootFile } : {}),
           updated_at: sql`now()`,
         })
         .where('id', '=', projectId)
@@ -132,6 +170,9 @@ export class ProjectsService {
         changes.name = { from: before.name, to: req.name };
       if (req.engine !== undefined && req.engine !== before.engine) {
         changes.engine = { from: before.engine, to: req.engine };
+      }
+      if (req.rootFile !== undefined && req.rootFile !== before.root_file_path) {
+        changes.rootFile = { from: before.root_file_path ?? '', to: req.rootFile };
       }
       await recordAudit(trx, {
         projectId,

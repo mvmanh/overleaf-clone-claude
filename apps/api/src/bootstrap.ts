@@ -10,7 +10,8 @@ export function configureApp(app: NestExpressApplication, config: AppConfig): vo
   app.disable('x-powered-by');
   app.use(helmet());
   app.use(cookieParser());
-  app.useBodyParser('json', { limit: '1mb' });
+  // Text files are capped at 2 MB of UTF-8; JSON escaping can inflate that.
+  app.useBodyParser('json', { limit: '6mb' });
   app.setGlobalPrefix(API_PREFIX.replace(/^\//, ''));
   app.enableShutdownHooks();
 }

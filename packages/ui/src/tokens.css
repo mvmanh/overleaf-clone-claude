@@ -168,3 +168,43 @@ a {
 .lc-skip-link:focus {
   top: var(--lc-space-2);
 }
+
+/* Editor syntax colours (CodeMirror reads these; see apps/web/lib/editor/theme.ts). */
+:root {
+  --lc-syn-command: #1f5fa8;
+  --lc-syn-atom: #8a3fa8;
+  --lc-syn-string: #2f7d32;
+  --lc-syn-number: #9a6200;
+  --lc-syn-comment: #8a8a82;
+  --lc-syn-property: #a3402b;
+  --lc-syn-bracket-text: #5e5e57;
+  --lc-syn-bracket: #e3f1ec;
+  --lc-syn-selection: #cfe3fb;
+  --lc-syn-active-line: rgb(0 0 0 / 0.03);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --lc-syn-command: #7fb2f0;
+    --lc-syn-atom: #c99be0;
+    --lc-syn-string: #8fcf8f;
+    --lc-syn-number: #e3b062;
+    --lc-syn-comment: #6f7874;
+    --lc-syn-property: #ec9a85;
+    --lc-syn-bracket-text: #a3aaa6;
+    --lc-syn-bracket: #17312a;
+    --lc-syn-selection: #284566;
+    --lc-syn-active-line: rgb(255 255 255 / 0.035);
+  }
+}
+:root[data-theme='dark'] {
+  --lc-syn-command: #7fb2f0;
+  --lc-syn-atom: #c99be0;
+  --lc-syn-string: #8fcf8f;
+  --lc-syn-number: #e3b062;
+  --lc-syn-comment: #6f7874;
+  --lc-syn-property: #ec9a85;
+  --lc-syn-bracket-text: #a3aaa6;
+  --lc-syn-bracket: #17312a;
+  --lc-syn-selection: #284566;
+  --lc-syn-active-line: rgb(255 255 255 / 0.035);
+}

@@ -21,6 +21,8 @@ export const ProjectSummary = z.object({
   role: ProjectRole,
   owner: z.object({ id: z.string().uuid(), displayName: z.string() }),
   memberCount: z.number().int().positive(),
+  /** Project-relative path of the main .tex file, if one is set. */
+  rootFile: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -39,16 +41,28 @@ export const ProjectName = z
   .max(200, 'Name must be at most 200 characters')
   .refine((v) => !CONTROL_CHARS.test(v), 'Name contains invalid characters');
 
+export const ProjectTemplate = z.enum(['blank', 'article', 'math', 'cs']);
+export type ProjectTemplate = z.infer<typeof ProjectTemplate>;
+
 export const CreateProjectRequest = z.object({
   name: ProjectName,
   engine: TexEngineName.default('pdflatex'),
+  template: ProjectTemplate.default('article'),
 });
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequest>;
 
 export const UpdateProjectRequest = z
-  .object({ name: ProjectName.optional(), engine: TexEngineName.optional() })
+  .object({
+    name: ProjectName.optional(),
+    engine: TexEngineName.optional(),
+    /** Must be an existing .tex file in the project. */
+    rootFile: z.string().min(1).max(512).optional(),
+  })
   .strict()
-  .refine((v) => v.name !== undefined || v.engine !== undefined, 'Nothing to update');
+  .refine(
+    (v) => v.name !== undefined || v.engine !== undefined || v.rootFile !== undefined,
+    'Nothing to update',
+  );
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequest>;
 
 /** Roles that can be granted by invitation or role change. Ownership moves only by transfer. */
@@ -90,6 +104,8 @@ export const PROJECT_PERMISSIONS = {
   'project:transfer': 'owner',
   'members:read': 'viewer',
   'members:manage': 'owner',
+  'files:read': 'viewer',
+  'files:write': 'editor',
 } as const satisfies Record<string, ProjectRole>;
 export type ProjectAction = keyof typeof PROJECT_PERMISSIONS;
 
