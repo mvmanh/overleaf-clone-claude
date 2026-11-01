@@ -6,7 +6,7 @@ const stamp = () => Date.now().toString(36);
 test('write LaTeX with autosave; reload keeps it', async ({ browser }) => {
   const alice = await newSession(browser, 'alice@example.com');
   const id = await createProject(alice, `E2E Editor ${stamp()}`, 'math');
-  await expect(alice.locator('.cm-line').first()).toContainText('\\documentclass[11pt]{amsart}');
+  await expect(alice.locator('.cm-line').first()).toContainText('\\documentclass[11pt]{article}');
 
   await alice.locator('.cm-content').click();
   await alice.keyboard.press('Control+End');

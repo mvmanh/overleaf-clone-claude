@@ -15,7 +15,7 @@ ENV API_INTERNAL_URL=${API_INTERNAL_URL}
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi \
  && pnpm install --frozen-lockfile --filter "@latex-cloud/web..." \
- && pnpm --filter "./packages/shared" build \
+ && pnpm --filter "@latex-cloud/web^..." build \
  && pnpm --filter @latex-cloud/web build
 
 FROM ${NODE_IMAGE} AS runtime

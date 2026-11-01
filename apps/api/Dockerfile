@@ -13,7 +13,7 @@ COPY . .
 RUN --mount=type=secret,id=extra_ca,required=false \
     if [ -f /run/secrets/extra_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/extra_ca; fi \
  && pnpm install --frozen-lockfile --filter "@latex-cloud/api..." \
- && pnpm --filter "./packages/shared" build \
+ && pnpm --filter "@latex-cloud/api^..." build \
  && pnpm --filter @latex-cloud/api build \
  && pnpm --filter @latex-cloud/api deploy --legacy --prod /out \
  && cp -r apps/api/dist /out/dist

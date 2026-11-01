@@ -27,8 +27,11 @@ import { ENGINE_LABELS } from '../../../lib/format';
 import './editor.css';
 import { FileTree } from './FileTree';
 import { SettingsDialog } from './SettingsDialog';
+import { PdfViewer } from './PdfViewer';
+import { ProblemsPanel } from './ProblemsPanel';
 import { ShareDialog } from './ShareDialog';
 import { SourceEditor, type SourceEditorHandle } from './SourceEditor';
+import { useCompile } from './useCompile';
 
 type PanelId = 'tree' | 'source' | 'pdf' | 'issues';
 
@@ -80,6 +83,19 @@ export function EditorShell({ projectId }: { projectId: string }) {
   const refs = useRef<Partial<Record<PanelId, HTMLElement | null>>>({});
   const source = useRef<SourceEditorHandle>(null);
   const shortcuts = useRef<HTMLDialogElement>(null);
+  const [jumpTo, setJumpTo] = useState<{ line: number; nonce: number } | null>(null);
+  /** Saves since the PDF on screen was built: the PDF may be out of date. */
+  const [editedSinceCompile, setEditedSinceCompile] = useState(false);
+
+  const flushEditor = useCallback(async () => {
+    await source.current?.flush();
+  }, []);
+  const build = useCompile(projectId, flushEditor);
+  const { compile } = build;
+  const compileNow = useCallback(() => {
+    setEditedSinceCompile(false);
+    void compile();
+  }, [compile]);
 
   const reloadProject = useCallback(() => {
     apiFetch(`/api/v1/projects/${encodeURIComponent(projectId)}`, ProjectSummary)
@@ -178,10 +194,14 @@ export function EditorShell({ projectId }: { projectId: string }) {
         e.preventDefault();
         shortcuts.current?.showModal();
       }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && !e.defaultPrevented) {
+        e.preventDefault();
+        compileNow();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [focusPanel]);
+  }, [focusPanel, compileNow]);
 
   if (state.kind !== 'ready') {
     return (
@@ -294,7 +314,12 @@ export function EditorShell({ projectId }: { projectId: string }) {
         file={selected}
         readOnly={!canWrite}
         onStatus={setSaveStatus}
-        onSaved={(saved) => setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs)}
+        onSaved={(saved) => {
+          setFiles((fs) => fs?.map((f) => (f.id === saved.id ? saved : f)) ?? fs);
+          setEditedSinceCompile(true);
+        }}
+        onCompile={compileNow}
+        jumpTo={jumpTo}
       />
     ) : (
       <EmptyState title={files?.length ? 'No file open' : 'No files yet'}>
@@ -312,25 +337,93 @@ export function EditorShell({ projectId }: { projectId: string }) {
     ),
   );
 
+  const latest = build.latest;
+  const shown = build.lastSuccessful;
+  const latestFailed = latest !== null && latest.status === 'failed';
   const pdfPanel = panel(
     'pdf',
     'PDF',
-    <EmptyState title="No PDF yet">
-      Compiling from the editor is the next milestone. A failed compile will never replace the last
-      good PDF.
-    </EmptyState>,
+    <>
+      {shown && latestFailed ? (
+        <div className="pdf-banner" data-tone="warning" role="status" data-testid="pdf-previous">
+          Showing the PDF from the previous successful compile. The latest compile failed — see
+          Problems.
+        </div>
+      ) : shown &&
+        (editedSinceCompile ||
+          (latest && latest.id !== shown.id && latest.status !== 'succeeded')) ? (
+        <div className="pdf-banner" data-tone="info" role="status">
+          Source changed since this PDF was built.{' '}
+          <Button size="sm" variant="ghost" onClick={compileNow} disabled={build.busy}>
+            Compile latest
+          </Button>
+        </div>
+      ) : null}
+      {shown ? (
+        <PdfViewer
+          url={`/api/v1/compiles/${shown.id}/artifacts/pdf`}
+          fileName={`${project.name.replace(/[^\w.-]+/g, '_') || 'document'}.pdf`}
+        />
+      ) : build.busy ? (
+        <div className="source-editor__center">
+          <Spinner label="Compiling" />
+        </div>
+      ) : (
+        <EmptyState
+          title="No PDF yet"
+          action={
+            <Button variant="primary" onClick={compileNow}>
+              Compile
+            </Button>
+          }
+        >
+          Compile to see the PDF here. A failed compile never replaces the last good PDF.
+        </EmptyState>
+      )}
+    </>,
   );
 
+  const errorCount = latest?.diagnostics.filter((d) => d.severity === 'error').length ?? 0;
   const issuesPanel = panel(
     'issues',
     'Problems',
-    <EmptyState title="No compile has run">
-      Errors and warnings will be listed here with click-to-line.
-    </EmptyState>,
-    <Badge tone="neutral" dot={false}>
-      0
-    </Badge>,
+    <ProblemsPanel
+      job={latest}
+      onJump={(d) => {
+        const target = d.file
+          ? files?.find((f) => f.path === d.file)
+          : files?.find((f) => f.path === latest?.rootFile);
+        if (!target || !d.line) return;
+        openFile(target);
+        setJumpTo({ line: d.line, nonce: Date.now() });
+      }}
+    />,
+    errorCount > 0 ? (
+      <Badge tone="danger" dot={false}>
+        {errorCount}
+      </Badge>
+    ) : null,
   );
+
+  const compileLabel = !latest
+    ? null
+    : latest.status === 'queued'
+      ? ['Queued…', 'info']
+      : ['preparing', 'running', 'publishing'].includes(latest.status)
+        ? ['Compiling…', 'info']
+        : latest.status === 'succeeded'
+          ? [
+              `Compiled${latest.timings.totalMs ? ` in ${(latest.timings.totalMs / 1000).toFixed(1)} s` : ''}${latest.cacheHit ? ' (cached)' : ''}`,
+              'success',
+            ]
+          : latest.status === 'failed'
+            ? [
+                latest.outcome === 'compile-error'
+                  ? `Compile failed (${errorCount} error${errorCount === 1 ? '' : 's'})`
+                  : (latest.message ?? 'Compile failed'),
+                'danger',
+              ]
+            : null;
 
   const [saveLabel, saveTone] = saveStatus ? SAVE_LABEL[saveStatus.kind] : ['', 'neutral' as Tone];
 
@@ -360,13 +453,24 @@ export function EditorShell({ projectId }: { projectId: string }) {
         <Badge tone="neutral" dot={false}>
           {ENGINE_LABELS[project.engine]}
         </Badge>
+        {build.error ? (
+          <Badge tone="danger" title={build.error}>
+            {build.error.length > 60 ? 'Compile unavailable' : build.error}
+          </Badge>
+        ) : compileLabel ? (
+          <span data-testid="compile-status" aria-live="polite">
+            <Badge tone={compileLabel[1] as Tone}>{compileLabel[0]}</Badge>
+          </span>
+        ) : null}
         <Button
           variant="primary"
           size="sm"
-          disabled
-          title="Compiling from the editor is the next milestone."
+          onClick={compileNow}
+          disabled={build.busy}
+          title="Compile (Ctrl/⌘+Enter)"
+          data-testid="compile-button"
         >
-          Compile
+          {build.busy ? 'Compiling…' : 'Compile'}
         </Button>
         <Button
           variant="ghost"
@@ -450,6 +554,12 @@ export function EditorShell({ projectId }: { projectId: string }) {
                 </td>
               </tr>
             ))}
+            <tr>
+              <td>Compile</td>
+              <td>
+                <Kbd>Ctrl/⌘</Kbd> <Kbd>Enter</Kbd>
+              </td>
+            </tr>
             <tr>
               <td>Save now (autosave is on)</td>
               <td>

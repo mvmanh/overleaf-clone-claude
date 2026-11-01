@@ -61,6 +61,24 @@ pnpm tex-image:build
 pnpm --filter @latex-cloud/compile-orchestrator test:fixtures
 ```
 
+## Compose stack (trusted local only)
+
+`pnpm stack:up` runs the compile worker with the **host Docker socket** so it can
+start one sandbox container per compile. The socket is root-equivalent on the
+host. This is acceptable only on a developer machine with trusted documents; it
+is the main reason the stack must not be exposed to other users.
+
+Additional controls added with the compile pipeline:
+
+- Source snapshots are re-verified against the revision fingerprint in the
+  worker; archive entries must be regular files with valid project paths.
+- The build cache is per project, only produced by successful builds, enters
+  the sandbox under a reserved prefix that project paths cannot use, and a
+  failing cached build is retried clean.
+- Artifacts are served only through the API with authorization,
+  `Content-Security-Policy: sandbox` and `nosniff`; PDF.js runs with
+  `isEvalSupported: false`.
+
 ## Known gaps (must close before any untrusted use)
 
 1. **Kernel isolation.** runc shares the host kernel. Required: gVisor

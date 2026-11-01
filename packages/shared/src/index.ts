@@ -4,5 +4,7 @@ export * from './auth';
 export * from './projects';
 export * from './paths';
 export * from './files';
+export * from './diagnostics';
+export * from './compiles';
 
 export const API_PREFIX = '/api/v1';

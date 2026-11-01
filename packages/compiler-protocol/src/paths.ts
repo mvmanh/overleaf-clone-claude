@@ -5,5 +5,6 @@ export {
   MAX_PATH_LENGTH,
   MAX_SEGMENT_LENGTH,
   type PathValidationResult,
+  RESERVED_TOP_LEVEL,
   validateProjectPath,
 } from '@latex-cloud/shared';

@@ -58,6 +58,11 @@ const CLASSIFIERS: Classifier[] = [
     test: /\\begin\{[^}]+\} on input line \d+ ended by \\end/,
     code: 'mismatched-environment',
   },
+  {
+    test: /Unicode character .* \(U\+[0-9A-F]+\)/,
+    code: 'unsupported-unicode',
+    hint: 'pdfLaTeX cannot typeset this character. Switch the compiler to XeLaTeX or LuaLaTeX in Settings, or load a package that provides it.',
+  },
   { test: /Emergency stop/, code: 'emergency-stop' },
   {
     test: /Runaway argument/,

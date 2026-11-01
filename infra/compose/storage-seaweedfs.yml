@@ -12,7 +12,7 @@ services:
         '-s3.port=9000',
         '-dir=/data',
         '-master.volumeSizeLimitMB=64',
-        '-volume.max=4',
+        '-volume.max=100',
       ]
     ports: !override
       - '127.0.0.1:${MINIO_PORT:-9000}:9000'

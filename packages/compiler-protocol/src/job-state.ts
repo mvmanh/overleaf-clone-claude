@@ -1,16 +1,6 @@
-import { z } from 'zod';
+import { CompileJobStatus } from '@latex-cloud/shared';
 
-export const CompileJobStatus = z.enum([
-  'queued',
-  'preparing',
-  'running',
-  'publishing',
-  'succeeded',
-  'failed',
-  'cancelled',
-  'superseded',
-]);
-export type CompileJobStatus = z.infer<typeof CompileJobStatus>;
+export { CompileJobStatus };
 
 export const TERMINAL_STATUSES: ReadonlySet<CompileJobStatus> = new Set([
   'succeeded',

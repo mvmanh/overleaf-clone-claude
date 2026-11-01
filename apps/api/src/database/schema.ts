@@ -1,5 +1,11 @@
 import type { ColumnType, Generated, Insertable, Selectable } from 'kysely';
-import type { ProjectRole, TexEngineName } from '@latex-cloud/shared';
+import type {
+  CompileArtifactKind,
+  CompileJobStatus,
+  CompileOutcome,
+  ProjectRole,
+  TexEngineName,
+} from '@latex-cloud/shared';
 
 type Timestamp = ColumnType<Date, Date | string | undefined, Date | string>;
 
@@ -77,6 +83,47 @@ export interface ProjectFilesTable {
   deleted_at: Date | null;
 }
 
+export interface ProjectRevisionsTable {
+  id: Generated<string>;
+  project_id: string;
+  fingerprint: string;
+  manifest: ColumnType<unknown, string, string>;
+  source_key: string;
+  created_by: string | null;
+  created_at: Timestamp;
+}
+
+export interface CompileJobsTable {
+  id: Generated<string>;
+  project_id: string;
+  revision_id: string;
+  status: CompileJobStatus;
+  outcome: CompileOutcome | null;
+  message: string | null;
+  engine: TexEngineName;
+  root_file: string;
+  requested_by: string | null;
+  worker: string | null;
+  tex_image: string | null;
+  queued_at: Timestamp;
+  started_at: Date | null;
+  finished_at: Date | null;
+  setup_ms: number | null;
+  compile_ms: number | null;
+  total_ms: number | null;
+  diagnostics: ColumnType<unknown, string | undefined, string>;
+}
+
+export interface CompileArtifactsTable {
+  id: Generated<string>;
+  compile_job_id: string;
+  kind: CompileArtifactKind;
+  file_name: string;
+  blob_key: string;
+  size_bytes: number;
+  sha256: string;
+}
+
 export interface Database {
   users: UsersTable;
   user_password_credentials: UserPasswordCredentialsTable;
@@ -85,6 +132,9 @@ export interface Database {
   project_members: ProjectMembersTable;
   project_audit_events: ProjectAuditEventsTable;
   project_files: ProjectFilesTable;
+  project_revisions: ProjectRevisionsTable;
+  compile_jobs: CompileJobsTable;
+  compile_artifacts: CompileArtifactsTable;
 }
 
 export type UserRow = Selectable<UsersTable>;

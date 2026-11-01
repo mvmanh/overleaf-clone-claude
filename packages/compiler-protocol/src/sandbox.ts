@@ -60,7 +60,47 @@ export interface SourceSnapshot {
 export interface EngineRunConfig {
   engine: TexEngine;
   rootFile: string;
+  /**
+   * Intermediate files (.aux, .bbl, .fdb_latexmk, …) from this project's
+   * previous successful build, placed in the output directory before latexmk
+   * runs so it can skip passes. Paths are relative to the output directory.
+   * Never shared across projects.
+   */
+  cache?: readonly SnapshotFile[];
 }
+
+/** File extensions kept between builds of the same project. */
+export const BUILD_CACHE_EXTENSIONS: readonly string[] = [
+  'aux',
+  'bbl',
+  'bcf',
+  'blg',
+  'run.xml',
+  'toc',
+  'lof',
+  'lot',
+  'out',
+  'fdb_latexmk',
+  'fls',
+  'nav',
+  'snm',
+  'vrb',
+  'idx',
+  'ind',
+  'ilg',
+  'glo',
+  'gls',
+  'glg',
+  'acn',
+  'acr',
+  'alg',
+  'ist',
+  'xdy',
+  'loa',
+  'mw',
+];
+
+export const MAX_BUILD_CACHE_BYTES = 32 * 1024 * 1024;
 
 export type ArtifactKind = 'pdf' | 'log' | 'synctex';
 
@@ -99,6 +139,10 @@ export interface SandboxRunResult {
   diagnostics: Diagnostic[];
   /** Short, human-readable summary for non-`succeeded` outcomes. */
   message?: string;
+  /** Tar of reusable intermediate files (see BUILD_CACHE_EXTENSIONS), if any. */
+  buildCache?: Uint8Array;
+  /** True when the run started from a build cache. */
+  usedCache?: boolean;
 }
 
 export interface ExecutorDescriptor {

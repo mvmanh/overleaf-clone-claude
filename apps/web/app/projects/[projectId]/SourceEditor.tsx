@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { basicSetup } from 'codemirror';
 import { indentWithTab } from '@codemirror/commands';
-import { Annotation, EditorState } from '@codemirror/state';
+import { Annotation, EditorState, Prec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { ProjectFile, ProjectFileWithContent } from '@latex-cloud/shared';
 import { Alert, Button, Spinner } from '@latex-cloud/ui';
@@ -35,16 +35,20 @@ export const SourceEditor = forwardRef<
     readOnly: boolean;
     onStatus: (s: SaveStatus) => void;
     onSaved: (f: ProjectFile) => void;
+    /** Ctrl/Cmd+Enter inside the editor. */
+    onCompile: () => void;
+    /** Line to reveal once the file is open (e.g. from a diagnostic). */
+    jumpTo?: { line: number; nonce: number } | null;
   }
->(function SourceEditor({ projectId, file, readOnly, onStatus, onSaved }, ref) {
+>(function SourceEditor({ projectId, file, readOnly, onStatus, onSaved, onCompile, jumpTo }, ref) {
   const host = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | null>(null);
   const session = useRef<FileSession | null>(null);
   const [load, setLoad] = useState<Load>({ kind: 'loading' });
   const [conflict, setConflict] = useState(false);
   // Keep latest callbacks without re-creating the editor.
-  const cb = useRef({ onStatus, onSaved });
-  cb.current = { onStatus, onSaved };
+  const cb = useRef({ onStatus, onSaved, onCompile });
+  cb.current = { onStatus, onSaved, onCompile };
 
   useImperativeHandle(ref, () => ({
     flush: () => session.current?.flush() ?? Promise.resolve(),
@@ -106,6 +110,18 @@ export const SourceEditor = forwardRef<
             doc: loaded.content,
             extensions: [
               basicSetup,
+              Prec.highest(
+                keymap.of([
+                  {
+                    key: 'Mod-Enter',
+                    preventDefault: true,
+                    run: () => {
+                      cb.current.onCompile();
+                      return true;
+                    },
+                  },
+                ]),
+              ),
               keymap.of([
                 indentWithTab,
                 {
@@ -155,6 +171,18 @@ export const SourceEditor = forwardRef<
       view.current = null;
     };
   }, [projectId, file.id, readOnly]);
+
+  useEffect(() => {
+    if (load.kind !== 'ready' || !jumpTo) return;
+    const v = view.current;
+    if (!v) return;
+    const l = v.state.doc.line(Math.min(Math.max(1, jumpTo.line), v.state.doc.lines));
+    v.dispatch({
+      selection: { anchor: l.from, head: l.to },
+      effects: EditorView.scrollIntoView(l.from, { y: 'center' }),
+    });
+    v.focus();
+  }, [jumpTo, load.kind]);
 
   async function keepMine() {
     await session.current?.overwrite();

@@ -9,11 +9,12 @@ import {
   type SandboxLimits,
   type SandboxOutcome,
   type SandboxRunResult,
+  RESERVED_TOP_LEVEL,
   type SourceSnapshot,
   TEX_SAFE_ENV,
 } from '@latex-cloud/compiler-protocol';
 import { SnapshotRejectedError, verifySnapshot } from '../snapshot';
-import { packSnapshot, unpackArtifacts } from '../tar';
+import { packSnapshot, unpackArtifacts } from '@latex-cloud/compiler-protocol';
 import { finalizeRun, rejectedResult } from './result';
 
 /** Paths inside the TeX image (see infra/tex-images/Dockerfile). */
@@ -114,7 +115,13 @@ export class DockerExecutor implements SandboxExecutor {
       throw err;
     }
 
-    const input = await packSnapshot(snapshot.files);
+    // Cache entries ride along under a reserved prefix that project paths can
+    // never use (validateProjectPath rejects it); lc-compile moves them to /work/out.
+    const cache = engine.cache ?? [];
+    const input = await packSnapshot([
+      ...snapshot.files,
+      ...cache.map((f) => ({ path: `${RESERVED_TOP_LEVEL}/${f.path}`, content: f.content })),
+    ]);
     const name = `lc-compile-${randomUUID()}`;
     const args = buildDockerRunArgs({
       name,
@@ -210,6 +217,8 @@ export class DockerExecutor implements SandboxExecutor {
       },
       writer,
       workspaceRoots: [SANDBOX_SRC, SANDBOX_OUT],
+      buildCache: files.get('build-cache.tar'),
+      usedCache: cache.length > 0,
     });
   }
 }

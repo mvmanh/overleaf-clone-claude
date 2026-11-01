@@ -14,6 +14,7 @@ export const ApiErrorCode = z.enum([
   'PAYLOAD_TOO_LARGE',
   'RATE_LIMITED',
   'SERVICE_UNAVAILABLE',
+  'COMPILER_UNAVAILABLE',
   'INTERNAL',
 ]);
 export type ApiErrorCode = z.infer<typeof ApiErrorCode>;

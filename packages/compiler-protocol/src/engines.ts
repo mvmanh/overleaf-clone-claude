@@ -65,6 +65,4 @@ export const TEX_SAFE_ENV: Readonly<Record<string, string>> = Object.freeze({
   max_print_line: '10000',
   error_line: '254',
   half_error_line: '238',
-  SOURCE_DATE_EPOCH: '0',
-  FORCE_SOURCE_DATE: '1',
 });

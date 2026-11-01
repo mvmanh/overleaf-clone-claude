@@ -90,6 +90,33 @@ services:
     restart: unless-stopped
     # Deliberately NO docker.sock mount and NO TeX toolchain in this image.
 
+  # Build-only service: produces the TeX sandbox image the worker runs per compile.
+  texlive:
+    build: { context: ../tex-images }
+    image: latex-cloud/texlive:dev
+    entrypoint: ['true']
+    restart: 'no'
+
+  # Compile worker. ⚠️ TRUSTED LOCAL USE ONLY: it receives the host Docker socket
+  # (root-equivalent) to start one locked-down sandbox container per compile.
+  # Never expose this stack to untrusted users (docs/security/compile-sandbox.md).
+  compile-worker:
+    build: { context: ../.., dockerfile: apps/compile-orchestrator/Dockerfile }
+    image: latex-cloud/compile-worker:dev
+    environment:
+      <<: *app-env
+      COMPILE_EXECUTOR: docker
+      TEX_IMAGE: latex-cloud/texlive:dev
+      COMPILE_CONCURRENCY: '2'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    user: root
+    depends_on:
+      texlive: { condition: service_completed_successfully }
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
   web:
     build:
       context: ../..

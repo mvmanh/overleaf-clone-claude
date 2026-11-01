@@ -1,5 +1,6 @@
 import { extract, pack } from 'tar-stream';
-import type { SnapshotFile } from '@latex-cloud/compiler-protocol';
+import { validateProjectPath } from './paths';
+import type { SnapshotFile } from './sandbox';
 
 const FIXED_MTIME = new Date(0);
 
@@ -65,4 +66,54 @@ export async function unpackArtifacts(data: Buffer, maxFiles = 16): Promise<Map<
   ex.end(data);
   await finished;
   return out;
+}
+
+/**
+ * Extracts a source snapshot archive (untrusted bytes from storage). Only
+ * regular files with valid project paths are accepted; anything else rejects
+ * the whole archive rather than being silently skipped.
+ */
+export async function unpackSnapshot(
+  data: Buffer,
+  limits: { maxFiles: number; maxTotalBytes: number },
+): Promise<SnapshotFile[]> {
+  const out: SnapshotFile[] = [];
+  let total = 0;
+  const ex = extract();
+  return new Promise<SnapshotFile[]>((resolve, reject) => {
+    let settled = false;
+    const fail = (msg: string) => {
+      if (settled) return;
+      settled = true;
+      ex.removeAllListeners('entry');
+      ex.on('error', () => undefined); // swallow follow-up stream errors
+      ex.destroy();
+      reject(new Error(msg));
+    };
+    ex.on('entry', (header, stream, next) => {
+      if (header.type !== 'file') return fail(`archive entry ${header.name} is not a regular file`);
+      const v = validateProjectPath(header.name);
+      if (!v.ok || v.path !== header.name)
+        return fail(`archive entry has an invalid path: ${header.name}`);
+      if (out.length >= limits.maxFiles) return fail('archive has too many files');
+      const chunks: Buffer[] = [];
+      stream.on('data', (c: unknown) => {
+        total += (c as Buffer).byteLength;
+        if (total > limits.maxTotalBytes) return fail('archive exceeds the size limit');
+        chunks.push(c as Buffer);
+      });
+      stream.on('end', () => {
+        if (settled) return;
+        out.push({ path: header.name, content: Buffer.concat(chunks) });
+        next();
+      });
+    });
+    ex.on('finish', () => {
+      if (settled) return;
+      settled = true;
+      resolve(out);
+    });
+    ex.on('error', (err: Error) => fail(err.message));
+    ex.end(data);
+  });
 }

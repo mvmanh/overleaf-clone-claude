@@ -8,7 +8,8 @@ describe('templateFiles', () => {
       expect(files[0]?.path).toBe('main.tex');
     }
     expect(templateFiles('article', 'X', 'xelatex')[0]?.content).toContain('fontspec');
-    expect(templateFiles('article', 'X', 'pdflatex')[0]?.content).toContain('fontenc');
+    expect(templateFiles('article', 'X', 'pdflatex')[0]?.content).toContain('[T1,T5]{fontenc}');
+    expect(templateFiles('math', 'X', 'pdflatex')[0]?.content).not.toContain('amsart');
   });
 
   it('escapes TeX special characters in the title', () => {

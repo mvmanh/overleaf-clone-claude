@@ -55,6 +55,12 @@ describe('parseTexLog', () => {
     expect(ds[1]?.message).toMatch(/^hyperref: Token not allowed .* removing/);
   });
 
+  it('suggests a Unicode engine for unsupported characters', () => {
+    const [d] = parseTexLog('./main.tex:9: LaTeX Error: Unicode character Ω (U+03A9)');
+    expect(d).toMatchObject({ code: 'unsupported-unicode', line: 9 });
+    expect(d?.hint).toMatch(/XeLaTeX or LuaLaTeX/);
+  });
+
   it('reports bad boxes as info', () => {
     const ds = parseTexLog('Overfull \\hbox (12.3pt too wide) in paragraph at lines 40--42');
     expect(ds[0]).toMatchObject({ severity: 'info', line: 40, code: 'bad-box' });

@@ -1,6 +1,6 @@
 export * from './config';
 export * from './snapshot';
-export * from './tar';
+
 export * from './executors/docker';
 export * from './executors/local-trusted-dev';
 export * from './executors/factory';

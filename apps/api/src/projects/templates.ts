@@ -7,7 +7,8 @@ export interface TemplateFile {
 
 const preambleFonts = (engine: TexEngineName) =>
   engine === 'pdflatex'
-    ? String.raw`\usepackage[T1]{fontenc}
+    ? // T5 (vntex) after T1: Vietnamese and other Latin-script text work out of the box.
+      String.raw`\usepackage[T1,T5]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}`
     : String.raw`\usepackage{fontspec}`;
@@ -38,7 +39,8 @@ export function templateFiles(
 ${preambleFonts(engine)}
 
 \begin{document}
-
+% An empty document produces no PDF, so start with a line of text.
+Start writing here.
 \end{document}
 `,
         },
@@ -74,9 +76,11 @@ Start writing here. Inline math looks like $e^{i\pi} + 1 = 0$, and displayed mat
       return [
         {
           path: 'main.tex',
-          content: String.raw`\documentclass[11pt]{amsart}
+          // article + amsthm rather than amsart: amsart upper-cases the title,
+          // which breaks non-ASCII titles under pdfLaTeX.
+          content: String.raw`\documentclass[11pt]{article}
 ${preambleFonts(engine)}
-\usepackage{amssymb,mathtools}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{hyperref}
 \usepackage{cleveref}
 

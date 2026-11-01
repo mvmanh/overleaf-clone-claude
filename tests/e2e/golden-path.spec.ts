@@ -47,8 +47,7 @@ test('alice sees only her seeded projects with correct roles and opens the edito
   for (const panel of ['tree', 'source', 'pdf', 'issues']) {
     await expect(page.getByTestId(`panel-${panel}`)).toBeVisible();
   }
-  // Compile is honestly disabled until the pipeline exists.
-  await expect(page.getByRole('button', { name: 'Compile' })).toBeDisabled();
+  await expect(page.getByTestId('compile-button')).toBeEnabled();
 
   // Keyboard-first: Alt+3 focuses the PDF panel; ? opens the shortcuts dialog.
   await page.keyboard.press('Alt+3');

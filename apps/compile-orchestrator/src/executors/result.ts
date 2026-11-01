@@ -26,6 +26,8 @@ export async function finalizeRun(opts: {
   timings: Omit<SandboxTimings, 'collectMs' | 'totalMs'> & { startedAt: number };
   writer: ArtifactWriter;
   workspaceRoots: string[];
+  buildCache?: Uint8Array | undefined;
+  usedCache?: boolean;
 }): Promise<SandboxRunResult> {
   const collectStart = performance.now();
   const base = jobBaseName(opts.rootFile);
@@ -82,6 +84,8 @@ export async function finalizeRun(opts: {
     artifacts,
     diagnostics,
     ...(opts.message ? { message: opts.message } : {}),
+    ...(opts.buildCache && outcome === 'succeeded' ? { buildCache: opts.buildCache } : {}),
+    usedCache: opts.usedCache ?? false,
   };
 }
 

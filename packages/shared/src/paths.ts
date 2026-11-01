@@ -15,6 +15,9 @@ export const FORBIDDEN_FILE_NAMES: ReadonlySet<string> = new Set([
   'texmf.cnf',
 ]);
 
+/** Top-level directory reserved for the build cache inside sandbox inputs. */
+export const RESERVED_TOP_LEVEL = '__lc_cache__';
+
 export type PathValidationResult = { ok: true; path: string } | { ok: false; reason: string };
 
 // eslint-disable-next-line no-control-regex
@@ -46,6 +49,10 @@ export function validateProjectPath(input: string): PathValidationResult {
       return { ok: false, reason: 'segments may not end with a space or dot' };
     }
     if (WINDOWS_RESERVED.test(segment)) return { ok: false, reason: 'reserved file name' };
+  }
+
+  if (segments[0]!.toLowerCase() === RESERVED_TOP_LEVEL) {
+    return { ok: false, reason: `"${RESERVED_TOP_LEVEL}" is reserved` };
   }
 
   const base = segments[segments.length - 1]!.toLowerCase();

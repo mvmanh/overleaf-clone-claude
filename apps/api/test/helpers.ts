@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { randomBytes } from 'node:crypto';
-import { Test } from '@nestjs/testing';
+import { Test, type TestingModuleBuilder } from '@nestjs/testing';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Client } from 'pg';
 import request from 'supertest';
@@ -46,6 +46,7 @@ export async function createTestDatabase(): Promise<{ url: string; drop: () => P
 export async function createTestApp(
   databaseUrl: string,
   overrides: Record<string, string> = {},
+  configure: (b: TestingModuleBuilder) => TestingModuleBuilder = (b) => b,
 ): Promise<NestExpressApplication> {
   Object.assign(process.env, {
     NODE_ENV: 'test',
@@ -62,7 +63,7 @@ export async function createTestApp(
     RATE_LIMIT_KEY_PREFIX: `lc:test:${randomBytes(4).toString('hex')}:`,
     ...overrides,
   });
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+  const moduleRef = await configure(Test.createTestingModule({ imports: [AppModule] })).compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>({
     bodyParser: false,
     logger: false,

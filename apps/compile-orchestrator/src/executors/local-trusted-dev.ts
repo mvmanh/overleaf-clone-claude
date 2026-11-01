@@ -11,10 +11,28 @@ import {
   type SandboxLimits,
   type SandboxOutcome,
   type SandboxRunResult,
+  BUILD_CACHE_EXTENSIONS,
+  packSnapshot,
   type SourceSnapshot,
   TEX_SAFE_ENV,
+  validateProjectPath,
 } from '@latex-cloud/compiler-protocol';
 import { SnapshotRejectedError, verifySnapshot } from '../snapshot';
+
+async function collectCache(out: string): Promise<{ path: string; content: Buffer }[]> {
+  const found: { path: string; content: Buffer }[] = [];
+  const walk = async (dir: string, rel: string) => {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      const r = rel ? `${rel}/${e.name}` : e.name;
+      if (e.isDirectory()) await walk(join(dir, e.name), r);
+      else if (e.isFile() && BUILD_CACHE_EXTENSIONS.some((x) => e.name.endsWith(`.${x}`))) {
+        found.push({ path: r, content: await readFile(join(dir, e.name)) });
+      }
+    }
+  };
+  await walk(out, '');
+  return found;
+}
 import { finalizeRun, rejectedResult } from './result';
 
 export interface LocalTrustedDevExecutorOptions {
@@ -72,6 +90,13 @@ export class LocalTrustedDevExecutor implements SandboxExecutor {
       await mkdir(src);
       await mkdir(out);
       await mkdir(join(root, 'home'));
+      for (const f of engine.cache ?? []) {
+        const v = validateProjectPath(f.path);
+        if (!v.ok) continue;
+        const target = join(out, v.path);
+        await mkdir(dirname(target), { recursive: true });
+        await writeFile(target, f.content, { flag: 'wx' });
+      }
       for (const f of snapshot.files) {
         const target = join(src, f.path);
         await mkdir(dirname(target), { recursive: true });
@@ -101,6 +126,7 @@ export class LocalTrustedDevExecutor implements SandboxExecutor {
       files.set('latexmk.stdout', Buffer.from(stdout));
       const overLimit = total > limits.maxOutputBytes;
 
+      const cacheFiles = await collectCache(out);
       return await finalizeRun({
         files: overLimit ? new Map() : files,
         rootFile: engine.rootFile,
@@ -111,6 +137,8 @@ export class LocalTrustedDevExecutor implements SandboxExecutor {
         timings: { startedAt, setupMs, compileMs },
         writer,
         workspaceRoots: [src, out],
+        buildCache: cacheFiles.length ? await packSnapshot(cacheFiles) : undefined,
+        usedCache: (engine.cache?.length ?? 0) > 0,
       });
     } finally {
       await rm(root, { recursive: true, force: true });

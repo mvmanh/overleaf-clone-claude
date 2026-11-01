@@ -4,17 +4,16 @@ A private, self-hostable, multi-user LaTeX authoring platform for mathematics an
 computer science. Independent codebase (no Overleaf CE code — see
 [ADR-0001](docs/architecture/ADRs/0001-independent-product.md)).
 
-> **Status: PR 2 — project CRUD + membership ACL** (on top of the PR 1
-> bootstrap). Sign-in, creating/renaming/deleting projects, sharing with
-> owner/editor/viewer roles, ownership transfer, the editor layout skeleton,
-> the compiler protocol, a hardened Docker compile executor and a fixture suite
-> are real and tested. Editing, compiling from the UI, uploads and
-> collaboration are **not implemented yet** and the UI says so. **Trusted local use only** — see
+> **Status: single-author vertical slice.** Sign in, create a project from a
+> template, share it with owner/editor/viewer roles, edit `.tex`/`.bib` files in
+> CodeMirror with autosave, compile in a per-job Docker sandbox, read the PDF
+> and jump from errors to their line. Uploads/ZIP import and real-time
+> collaboration are **not implemented yet**. **Trusted local use only** — see
 > [compile sandbox security](docs/security/compile-sandbox.md).
 
 Specification: [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) ·
 [`AGENT_BRIEF.md`](docs/architecture/AGENT_BRIEF.md) · [ADRs](docs/architecture/ADRs/) ·
-[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 proposal](docs/product/pr-3-proposal.md)
+[PR 2 notes](docs/product/pr-2-proposal.md) · [PR 3 notes](docs/product/pr-3-proposal.md) · [next: PR 5 proposal](docs/product/pr-5-proposal.md)
 
 ## Quick start (one command)
 
@@ -29,8 +28,10 @@ pnpm stack:up
 ```
 
 This builds and starts PostgreSQL, Redis, MinIO, a one-shot `migrate` job
-(migrations + dev seed + bucket), the API and the web app, and waits until all
-health checks pass. Then open <http://localhost:3000> and sign in:
+(migrations + dev seed + bucket), the API, the web app, the TeX Live sandbox
+image and the compile worker, and waits until all health checks pass. The
+first run builds the TeX image (~1.7 GB, several minutes). Then open
+<http://localhost:3000> and sign in:
 
 | User                | Password                   | Sees                       |
 | ------------------- | -------------------------- | -------------------------- |
@@ -64,6 +65,10 @@ pnpm dev:setup         # build shared packages, migrate, seed, create bucket
 
 ```bash
 pnpm dev           # api on :4000 (node --watch) + web on :3000 (next dev)
+```
+
+```bash
+pnpm tex-image:build && pnpm dev:worker   # compile worker (second terminal)
 ```
 
 The API reads the repository-root `.env`. The browser only talks to the web
@@ -183,6 +188,30 @@ docs/                    architecture (spec + ADRs), security, product
 - **Templates:** new projects start from Article, Mathematics, Computer science
   or Blank; seeded demo projects have files.
 - **Layout:** resizable file / source / PDF / problems panes, remembered per browser.
+
+## Compile pipeline
+
+1. **Compile** (button or Ctrl/⌘+Enter) flushes unsaved edits, then the API
+   reads all files in one `REPEATABLE READ` transaction and builds an
+   immutable **revision manifest** (paths + SHA-256 + root + engine + TeX
+   image digest). Its fingerprint identifies the build.
+2. The snapshot is stored as a tar in object storage
+   (`sources/<project>/<fingerprint>.tar`). If the same fingerprint is already
+   built or building, that job is returned (coalesced clicks, cache hits);
+   queued jobs of older revisions are marked `superseded` (latest wins).
+3. A BullMQ job (id only) goes to the **compile worker**, which re-verifies the
+   snapshot against the fingerprint, runs latexmk in a fresh locked-down
+   container, uploads PDF/log/SyncTeX and records diagnostics and timings.
+4. The browser polls the job, renders the PDF with PDF.js (zoom/scroll kept
+   across rebuilds), lists problems with click-to-line, and never replaces the
+   last good PDF with a failed build.
+
+**Incremental cache:** after a successful build the worker keeps the project's
+intermediates (`.aux`, `.bbl`, `.toc`, `.fdb_latexmk`, …) under
+`cache/<project>/…` and feeds them to the next build. A build that fails with a
+cache is retried clean before reporting the error, so a stale cache can only
+cost time, never correctness. Measured on the CS template (biber, 4 vCPU dev
+container): first build 5.0 s end to end, subsequent edits 1.5 s.
 
 ## Measured fixture timings (Docker executor, warm image)
 

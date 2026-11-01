@@ -21,7 +21,15 @@ describe('file contracts', () => {
   });
 
   it('applies the shared path safety rules', () => {
-    for (const bad of ['../x.tex', '/abs.tex', 'a//b.tex', 'latexmkrc', '-x.tex', 'a\\b.tex']) {
+    for (const bad of [
+      '../x.tex',
+      '/abs.tex',
+      'a//b.tex',
+      'latexmkrc',
+      '-x.tex',
+      'a\\b.tex',
+      '__lc_cache__/x.tex',
+    ]) {
       expect(CreateFileRequest.safeParse({ path: bad }).success, bad).toBe(false);
     }
     expect(CreateFileRequest.parse({ path: ' chapters/one.tex ' })).toEqual({

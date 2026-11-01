@@ -1,0 +1,5 @@
+{
+  "description": "Vietnamese text and an em dash in the title with pdfLaTeX (T1,T5 + vntex), as used by the project templates",
+  "engine": "pdflatex",
+  "expect": { "outcome": "succeeded", "minPages": 1 }
+}

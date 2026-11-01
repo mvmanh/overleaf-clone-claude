@@ -17,6 +17,11 @@ const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   transpilePackages: ['@latex-cloud/ui'],
+  webpack(config) {
+    // pdfjs-dist references the optional Node "canvas" package; never bundle it.
+    config.resolve.alias = { ...config.resolve.alias, canvas: false };
+    return config;
+  },
   // The browser only ever talks to this origin; /api is proxied to the API so
   // session cookies stay first-party and SameSite=Lax applies.
   async rewrites() {

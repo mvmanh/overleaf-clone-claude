@@ -106,6 +106,8 @@ export const PROJECT_PERMISSIONS = {
   'members:manage': 'owner',
   'files:read': 'viewer',
   'files:write': 'editor',
+  // Viewers may compile: they need the PDF. Quotas bound the cost.
+  'compile:run': 'viewer',
 } as const satisfies Record<string, ProjectRole>;
 export type ProjectAction = keyof typeof PROJECT_PERMISSIONS;
 
